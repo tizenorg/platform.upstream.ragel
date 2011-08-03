@@ -1,3 +1,9 @@
+ragel (6.6-1slp2) unstable; urgency=low
+
+  * repackage for SLP
+
+ -- Mike McCormack <mj.mccormack@samsung.com>  Wed, 03 Aug 2011 17:17:01 +0900
+
 ragel (6.6-1) unstable; urgency=low
 
   * New upstream release

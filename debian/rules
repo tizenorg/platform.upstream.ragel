@@ -12,16 +12,18 @@ export CFLAGS
 DEB_BUILD_ARCH?=$(shell dpkg-architecture -qDEB_BUILD_ARCH)
 export DEB_BUILD_ARCH
 
+configure:
+	./autogen.sh
+
 config.status: configure
 	dh_testdir
-	./configure --prefix=/usr --mandir=\$${prefix}/share/man 
+	./configure --prefix=/usr
 
 build: build-stamp
 
 build-stamp:  config.status
 	dh_testdir
-	$(MAKE) all 
-	$(MAKE) -C doc 
+	$(MAKE) SUBDIRS=ragel
 	touch build-stamp
 
 clean:
@@ -37,19 +39,13 @@ install: build
 	dh_testroot
 	dh_prep
 	dh_installdirs
-	$(MAKE) install DESTDIR=$(CURDIR)/debian/ragel/ 
+	$(MAKE) install SUBDIRS=ragel DESTDIR=$(CURDIR)/debian/ragel
 
 binary-indep: build install
 
 binary-arch: build install
 	dh_testdir
 	dh_testroot
-	dh_installman 
-	dh_installdocs -n
-	dh_installdocs -n doc/ragel-guide.pdf
-	dh_installexamples
-	dh_installchangelogs ChangeLog
-	dh_compress -Xexamples
 	dh_link
 	dh_strip
 	dh_fixperms
@@ -60,4 +56,4 @@ binary-arch: build install
 	dh_builddeb
 
 binary: binary-indep binary-arch
-.PHONY: build clean binary-indep binary-arch binary install 
+.PHONY: build clean binary-indep binary-arch binary install

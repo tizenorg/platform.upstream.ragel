@@ -1,9 +1,9 @@
 Source: ragel
 Section: devel
 Priority: optional
-Maintainer: Robert Lemmen <robertle@semistable.com>
-Build-Depends: debhelper (>> 7.0.0), flex, bison, gobjc, transfig, texlive, 
- texlive-latex-extra, ghostscript, gperf, sharutils
+Maintainer: Mike McCormack <mj.mccormack@samsung.com>
+## Maintainer: Robert Lemmen <robertle@semistable.com>
+Build-Depends: debhelper (>> 7.0.0), autotools-dev, flex, bison
 Standards-Version: 3.8.3
 
 Package: ragel
