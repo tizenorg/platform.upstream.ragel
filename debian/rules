@@ -1,0 +1,59 @@
+#!/usr/bin/make -f
+
+CFLAGS = -g -Wall
+ifneq (,$(findstring noopt,$(DEB_BUILD_OPTIONS)))
+	CFLAGS += -O0
+else
+	CFLAGS += -O2
+endif
+export CFLAGS
+
+# for the m68k hack
+DEB_BUILD_ARCH?=$(shell dpkg-architecture -qDEB_BUILD_ARCH)
+export DEB_BUILD_ARCH
+
+configure:
+	./autogen.sh
+
+config.status: configure
+	dh_testdir
+	./configure --prefix=/usr
+
+build: build-stamp
+
+build-stamp:  config.status
+	dh_testdir
+	$(MAKE) SUBDIRS=ragel
+	touch build-stamp
+
+clean:
+	dh_testdir
+	dh_testroot
+	rm -f build-stamp 
+	[ ! -f Makefile ] || $(MAKE) distclean
+	[ ! -f test/Makefile ] || $(MAKE) -C test distclean
+	dh_clean
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_prep
+	dh_installdirs
+	$(MAKE) install SUBDIRS=ragel DESTDIR=$(CURDIR)/debian/ragel
+
+binary-indep: build install
+
+binary-arch: build install
+	dh_testdir
+	dh_testroot
+	dh_link
+	dh_strip
+	dh_fixperms
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+binary: binary-indep binary-arch
+.PHONY: build clean binary-indep binary-arch binary install
