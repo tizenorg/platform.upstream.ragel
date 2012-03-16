@@ -5,10 +5,20 @@ Release:    1
 Group:      TO_BE/FILLED_IN
 License:    TO BE FILLED IN
 Source0:    %{name}-%{version}.tar.gz
-Patch0:  no-doc.patch
+Patch0:     no-doc.patch
 
 
 %description
+compiles finite state machines into code in various languages
+Ragel compiles finite state machines from regular languages into C, C++,
+Objective-C, D, Ruby or Java code. Ragel allows the programmer to embed
+actions at any point in a regular language. Non-determinism can be
+controlled through the use of embedded priorities and guarded regular
+language operators. Ragel also supports the construction of scanners and
+the building of state machines using state-charts. Ragel can be used to
+create robust recognizers and parsers which run very fast. It can work
+with integer-sized alphabets and can compile large state machines.
+The generated code has no dependencies.
 
 
 %prep
@@ -20,17 +30,14 @@ Patch0:  no-doc.patch
 ./autogen.sh
 ./configure --prefix=%{_prefix}
 
-
 make %{?jobs:-j%jobs}
+
 
 %install
 rm -rf %{buildroot}
 %make_install
 
 
-
 %files
-/usr/bin/ragel
-/usr/share/doc/ragel/CREDITS
-/usr/share/doc/ragel/ChangeLog
-
+%{_bindir}/ragel
+%{_defaultdocdir}/*
