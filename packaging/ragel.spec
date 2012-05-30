@@ -5,6 +5,7 @@ Release:    1
 Group:      TO_BE/FILLED_IN
 License:    TO BE FILLED IN
 Source0:    %{name}-%{version}.tar.gz
+Source1001: packaging/ragel.manifest 
 Patch0:  no-doc.patch
 
 
@@ -17,6 +18,7 @@ Patch0:  no-doc.patch
 
 
 %build
+cp %{SOURCE1001} .
 ./autogen.sh
 ./configure --prefix=%{_prefix}
 
@@ -30,6 +32,7 @@ rm -rf %{buildroot}
 
 
 %files
+%manifest ragel.manifest
 /usr/bin/ragel
 /usr/share/doc/ragel/CREDITS
 /usr/share/doc/ragel/ChangeLog
