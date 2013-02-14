@@ -19,7 +19,7 @@ struct fsm
 	machine fsm;
 	alphtype int;
 	getkey fpc->key;
-	variable curstate fsm->cs;
+	variable cs fsm->cs;
 
 	action a1 {}
 	action a2 {}
@@ -41,14 +41,13 @@ void fsm_execute( struct fsm *fsm,  struct LangEl *_data, int _len )
 {
 	struct LangEl *p = _data;
 	struct LangEl *pe = _data+_len;
+	struct LangEl *eof = pe;
 
 	%% write exec;
 }
 
 int fsm_finish( struct fsm *fsm )
 {
-	%% write eof;
-
 	if ( fsm->cs == fsm_error )
 		return -1;
 	if ( fsm->cs >= fsm_first_final )

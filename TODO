@@ -1,9 +1,59 @@
+Guard against including a ragel file more than once (newsgroup).
+
+Line numbers in included files refer to the master file. This needs to be
+fixed -- from Manoj.
+
+Remove old action embedding and condition setting syntax.
+
 fbreak should advance the current char. Depreciate fbreak and add
     fctl_break;
     fctl_return <expr>;
     fctl_goto <label>;
+This is needed for better support of pull scanners.
 
-It should be possible to import/export definitions.
+Eliminate tokend, replace it with the marker variable and add ftokend/ftoklen.
+
+Add the accept action embedding operator: like eof but only for states that end
+up final. Add the combined pending/accept action. This becomes a good idea when
+eof action execution is moved into the main loop.
+
+Add a prefix operator which sets every state final.
+
+Minimization should remove a condition when the character allows both
+the positive and negative sense of the condition. This happens in:
+test_every_10_chars = ( ( c when test_len ) c{0,9} )**;
+In this example there is non-determinsm that is killed by the priorities, but
+since conditions are expanded before priorities are tested, many transitions
+end up with test_len || !test_len.
+
+Should be possible to include scanner definitions in another scanner.
+
+Need an "entry name;" feature, causing name to get written out with the other
+entry points in the data.
+
+Possibly bring back the old semantics of > in a new operator, or allow it to be
+defined somehow.
+
+When priorities are embedded without a name, the name of the current machine is
+used. Perhaps a unique name for each instance of the current machine should be
+used instead. This idea could work well if applied to user-defined embeddings. 
+
+User defined embeddings <-name(a1,a2,...).
+User defined operators expr1 <name> expr2.
+
+Doesn't make make sense for [] to be the lambda (zero-length) machine. This
+should be the empty set (the empty machine). But then would it be invalid in a
+regular expression?
+
+The |> guarded operator and the <| guarded operator need to be added.
+
+An option to turn off the removal of duplicate actions might be useful for
+analyzing unintentional nondeterminism.
+
+Might be a good idea to add in some protection against using up all of a
+system's memory. This protection could then be removed by people when someone
+is sure they want to use a lot of memory.
+
 
 If a scanner can be optimized into a pure state machine, maybe permit it to be
 referenced as a machine definition. Alternately: inline scanners with an
@@ -31,6 +81,10 @@ Add more examples, add more tests and write more documentation.
 A debugger would be nice. Ragel could emit a special debug version that
 prompted for debug commands that allowed the user to step through the machine
 and get details about where they are in their RL.
+
+A quick and easy alternative would be a trace code generation option. This
+would open a trace file and list all the active machines at each step of the
+input.
 
 Frontend should allow the redefinition of fsm section delimiters.
 

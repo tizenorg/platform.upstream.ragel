@@ -72,8 +72,6 @@ void CallTest::execute( const char *data, int len )
 
 int CallTest::finish( )
 {
-	%% write eof;
-
 	if ( this->cs == CallTest_error )
 		return -1;
 	if ( this->cs >= CallTest_first_final )
@@ -83,7 +81,7 @@ int CallTest::finish( )
 
 #define BUFSIZE 1024
 
-void test( char *buf )
+void test( const char *buf )
 {   
 	CallTest test;
 

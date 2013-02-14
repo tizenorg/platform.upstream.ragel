@@ -5,8 +5,8 @@
 char comm;
 int top;
 int stack[32];
-ptr tokstart;
-ptr tokend;
+ptr ts;
+ptr te;
 int act;
 int val;
 %%
@@ -20,13 +20,17 @@ int val;
 	*|;
 
 	exec_test := |* 
-		[a-z]+ => { prints "word (w/lbh)\n"; fexec tokend-1; fgoto other; };
+		[a-z]+ => { prints "word (w/lbh)\n"; fexec te-1; fgoto other; };
 		[a-z]+ ' foil' => { prints "word (c/lbh)\n"; };
 		[\n ] => { prints "space\n"; };
 		'22' => { prints "num (w/switch)\n"; };
-		[0-9]+ => { prints "num (w/switch)\n"; fexec tokend-1; fgoto other;};
+		[0-9]+ => { prints "num (w/switch)\n"; fexec te-1; fgoto other;};
 		[0-9]+ ' foil' => {prints "num (c/switch)\n"; };
 		'!';# => { prints "immdiate\n"; fgoto exec_test; };
+	*|;
+
+	semi := |* 
+		';' => { prints "in semi\n"; fgoto main; };
 	*|;
 
 	main := |* 
@@ -36,6 +40,7 @@ int val;
 		'22' => { prints "num (w/switch)\n"; };
 		[0-9]+ => { prints "num (w/switch)\n"; fhold; fgoto other;};
 		[0-9]+ ' foil' => {prints "num (c/switch)\n"; };
+		';' => { prints "going to semi\n"; fhold; fgoto semi;};
 		'!' => { prints "immdiate\n"; fgoto exec_test; };
 	*|;
 }%%
@@ -46,6 +51,7 @@ int val;
 "!abcd foix\n"
 "!abcd\nanother\n"
 "!123 foix\n"
+";"
 _____INPUT_____ */
 /* _____OUTPUT_____
 word (w/lbh)
@@ -86,6 +92,9 @@ num
 space
 word
 space
+ACCEPT
+going to semi
+in semi
 ACCEPT
 _____OUTPUT_____ */
 

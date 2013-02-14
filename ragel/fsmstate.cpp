@@ -1,5 +1,5 @@
 /*
- *  Copyright 2002 Adrian Thurston <thurston@cs.queensu.ca>
+ *  Copyright 2002 Adrian Thurston <thurston@complang.org>
  */
 
 /*  This file is part of Ragel.
@@ -76,6 +76,9 @@ StateAp::StateAp()
 	outList(),
 	inList(),
 
+	/* No EOF target. */
+	eofTarget(0),
+
 	/* No entry points, or epsilon trans. */
 	entryIds(),
 	epsilonTrans(),
@@ -115,6 +118,10 @@ StateAp::StateAp(const StateAp &other)
 	outList(),
 	inList(),
 
+	/* Set this using the original state's eofTarget. It will get mapped back
+	 * to the new machine in the Fsm copy constructor. */
+	eofTarget(other.eofTarget),
+
 	/* Duplicate the entry id set and epsilon transitions. These
 	 * are sets of integers and as such need no fixing. */
 	entryIds(other.entryIds),
@@ -149,6 +156,7 @@ StateAp::StateAp(const StateAp &other)
 		/* Dupicate and store the orginal target in the transition. This will
 		 * be corrected once all the states have been created. */
 		TransAp *newTrans = new TransAp(*trans);
+		assert( trans->lmActionTable.length() == 0 );
 		newTrans->toState = trans->toState;
 		outList.append( newTrans );
 	}
@@ -163,16 +171,16 @@ StateAp::~StateAp()
 }
 
 /* Compare two states using pointers to the states. With the approximate
- * compare the idea is that if the compare finds them the same, they can
+ * compare, the idea is that if the compare finds them the same, they can
  * immediately be merged. */
-int ApproxCompare::compare( const StateAp *state1 , const StateAp *state2 )
+int ApproxCompare::compare( const StateAp *state1, const StateAp *state2 )
 {
 	int compareRes;
 
 	/* Test final state status. */
-	if ( (state1->stateBits & SB_ISFINAL) && !(state2->stateBits & SB_ISFINAL) )
+	if ( (state1->stateBits & STB_ISFINAL) && !(state2->stateBits & STB_ISFINAL) )
 		return -1;
-	else if ( !(state1->stateBits & SB_ISFINAL) && (state2->stateBits & SB_ISFINAL) )
+	else if ( !(state1->stateBits & STB_ISFINAL) && (state2->stateBits & STB_ISFINAL) )
 		return 1;
 	
 	/* Test epsilon transition sets. */
@@ -216,19 +224,25 @@ int ApproxCompare::compare( const StateAp *state1 , const StateAp *state2 )
 		}
 	}
 
+	/* Check EOF targets. */
+	if ( state1->eofTarget < state2->eofTarget )
+		return -1;
+	else if ( state1->eofTarget > state2->eofTarget )
+		return 1;
+
 	/* Got through the entire state comparison, deem them equal. */
 	return 0;
 }
 
-/* Compare class for the sort that does the intial partition of compaction. */
+/* Compare class used in the initial partition. */
 int InitPartitionCompare::compare( const StateAp *state1 , const StateAp *state2 )
 {
 	int compareRes;
 
 	/* Test final state status. */
-	if ( (state1->stateBits & SB_ISFINAL) && !(state2->stateBits & SB_ISFINAL) )
+	if ( (state1->stateBits & STB_ISFINAL) && !(state2->stateBits & STB_ISFINAL) )
 		return -1;
-	else if ( !(state1->stateBits & SB_ISFINAL) && (state2->stateBits & SB_ISFINAL) )
+	else if ( !(state1->stateBits & STB_ISFINAL) && (state2->stateBits & STB_ISFINAL) )
 		return 1;
 
 	/* Test epsilon transition sets. */
@@ -332,6 +346,19 @@ int PartitionCompare::compare( const StateAp *state1, const StateAp *state2 )
 		case BreakS2:
 			break;
 		}
+	}
+
+	/* Test eof targets. */
+	if ( state1->eofTarget == 0 && state2->eofTarget != 0 )
+		return -1;
+	else if ( state1->eofTarget != 0 && state2->eofTarget == 0 )
+		return 1;
+	else if ( state1->eofTarget != 0 ) {
+		/* Both eof targets are set. */
+		compareRes = CmpOrd< MinPartition* >::compare( 
+			state1->eofTarget->alg.partition, state2->eofTarget->alg.partition );
+		if ( compareRes != 0 )
+			return compareRes;
 	}
 
 	return 0;

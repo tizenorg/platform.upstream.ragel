@@ -43,12 +43,12 @@ static const int TK_Comment = 242;
 class Scanner 
 {
 	int cs, act;
-	char *tokstart, tokend;
+	char *ts, te;
 
 	void token( int tok )
 	{
-		char *data = tokstart;
-		int len = tokend - tokstart;
+		char *data = ts;
+		int len = te - ts;
 		printf( "<%i> ", tok );
 		for ( int i = 0; i < len; i++ )
 			printf( "%c", data[i] );
@@ -116,7 +116,7 @@ class Scanner
 	'...' => { token( TK_DotDotDot );};
 
 	# Single char symbols.
-	( punct - [_"'] ) => { token( tokstart[0] );};
+	( punct - [_"'] ) => { token( ts[0] );};
 
 	action comment {
 		token( TK_Comment );
@@ -142,6 +142,7 @@ class Scanner
 	{
 		char *p = data;
 		char *pe = data + len;
+		char *eof = pe;
 
 		%% write exec;
 	}
@@ -152,8 +153,6 @@ class Scanner
 	// accepting state.
 	int finish( )
 	{
-		%% write eof;
-
 		if ( cs == error )
 			return -1;
 		if ( cs >= first_final )
@@ -187,8 +186,7 @@ int main()
 		"44. 44\n"
 		"44 . 44\n"
 		"44.44\n"
-		"_hithere22\n"
-		"\n"
+		"_hithere22"
 	);
 
 	test(
@@ -202,7 +200,7 @@ int main()
 		"0x98\n"
 		"0x\n"
 		"//\n"
-		"/* * */\n"
+		"/* * */"
 	);
 
 	test(

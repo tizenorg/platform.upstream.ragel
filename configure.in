@@ -1,5 +1,5 @@
 dnl 
-dnl   Copyright 2001-2006 Adrian Thurston <thurston@cs.queensu.ca>
+dnl   Copyright 2001-2009 Adrian Thurston <thurston@complang.org>
 dnl
 
 dnl   This file is part of Ragel.
@@ -18,21 +18,35 @@ dnl   You should have received a copy of the GNU General Public License
 dnl   along with Ragel; if not, write to the Free Software
 dnl   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA 
   
-AC_INIT(ragel/main.cpp)
-AC_CONFIG_HEADER(common/config.h)
+AC_INIT(ragel, 6.6)
+PUBDATE="Dec 2009"
 
-dnl Set true if build system should generate parsers from flex, bison, and
-dnl gperf sources. Set false if generated files are included and not to be
-dnl built (production).
-AC_SUBST(BUILD_PARSERS,true)
+AM_INIT_AUTOMAKE([foreign])
+AC_SUBST(PUBDATE)
+AC_CONFIG_HEADER(ragel/config.h)
+
+dnl Choose defaults for the build_parsers and build_manual vars. If the dist
+dnl file is present in the root then default to no, otherwise go for it.
+AC_CHECK_FILES( $srcdir/DIST, 
+	[ . $srcdir/DIST; ], 
+	[ build_parsers=yes; build_manual=yes; ] )
+
+dnl Set to true if the build system should generate parsers from ragel and kelbt
+dnl sources. Set to false if generated files are included and not to be built
+dnl (production).
+AM_CONDITIONAL(BUILD_PARSERS, [test "x$build_parsers" = "xyes"])
+
+dnl Set to true if the manual should be built.
+AM_CONDITIONAL(BUILD_MANUAL, [test "x$build_manual" = "xyes"])
 
 dnl Checks for programs.
 AC_PROG_CC
-AC_DEFINE_UNQUOTED(CC,$CC)
-
-dnl Checks for programs.
 AC_PROG_CXX
-AC_DEFINE_UNQUOTED(CXX,$CXX)
+AC_CHECK_TOOL(AR, ar)
+AC_PROG_RANLIB
+
+# Default flags.
+CXXFLAGS="-g"
 
 dnl Set test on c++ compiler.
 AC_LANG_CPLUSPLUS
@@ -40,50 +54,50 @@ AC_LANG_CPLUSPLUS
 dnl Check for definition of MAKE.
 AC_PROG_MAKE_SET
 
-if test $BUILD_PARSERS = true; then
+# Checks to carry out if we are building parsers.
+if test "x$build_parsers" = "xyes"; then
 
-dnl Check for flex
-AC_CHECK_PROG(FLEX, flex, flex)
-if test -z "$FLEX"; then
+AC_CHECK_PROG(RAGEL, ragel, ragel)
+if test -z "$RAGEL"; then
 	echo
-	echo "error: flex is required to compile ragel"
+	echo "error: ragel is required to build the parsers"
 	echo
 	exit 1
 fi
 
-dnl Check for gperf
-AC_CHECK_PROG(GPERF, gperf, gperf)
-if test -z "$GPERF"; then
+AC_CHECK_PROG(KELBT, kelbt, kelbt)
+if test -z "$KELBT"; then
 	echo
-	echo "error: gperf is required to compile ragel"
-	echo
-	exit 1
-fi
-
-dnl Check for bison
-AC_CHECK_PROG(BISON, bison, bison)
-if test -z "$BISON"; then
-	echo
-	echo "error: bison is required to compile ragel"
+	echo "error: kelbt is required to build the parsers"
 	echo
 	exit 1
 fi
 
-dnl Sorry, Ragel will not compile with bison++.
-if "$BISON" --version | grep 'bison++'; then
+fi 
+
+# Checks to carry out if we are building the manual.
+if test "x$build_manual" = "xyes"; then
+
+AC_CHECK_PROG(FIG2DEV, fig2dev, fig2dev)
+if test -z "$FIG2DEV"; then
 	echo
-	echo "error: sorry, ragel cannot be compiled with bison++"
+	echo "error: fig2dev is required to build the manual"
 	echo
 	exit 1
 fi
 
-fi # BUILD_PARSERS
+AC_CHECK_PROG(PDFLATEX, pdflatex, pdflatex)
+if test -z "$PDFLATEX"; then
+	echo
+	echo "error: pdflatex is required to build the manual"
+	echo
+	exit 1
+fi
+
+fi
 
 dnl Check for the D compiler
 AC_CHECK_PROG(GDC, gdc, gdc)
-if test -n "$GDC"; then
-	AC_DEFINE_UNQUOTED(GDC,$GDC)
-fi
 
 dnl Check for the Objective-C compiler
 AC_MSG_CHECKING([for the Objective-C compiler])
@@ -94,7 +108,6 @@ GOBJC=""
 if gcc -x objective-c conftest.m -o conftest.bin 2>/dev/null; then
 	GOBJC="gcc -x objective-c"
 	AC_MSG_RESULT([yes])
-	AC_DEFINE_UNQUOTED(GOBJC,$GOBJC)
 else
 	AC_MSG_RESULT([no])
 fi
@@ -102,17 +115,26 @@ AC_SUBST(GOBJC)
 
 dnl Check for the Java compiler.
 AC_CHECK_PROG(JAVAC, javac, javac)
-if test -n "$JAVAC"; then
-	AC_DEFINE_UNQUOTED(JAVAC,$JAVAC)
-fi
 
 dnl Check for TXL.
 AC_CHECK_PROG(TXL, txl, txl)
-if test -n "$TXL"; then
-	AC_DEFINE_UNQUOTED(TXL,$TXL)
-fi
+
+dnl Check for Ruby.
+AC_CHECK_PROG(RUBY, ruby, ruby)
+
+dnl Check for the C# compiler.
+AC_CHECK_PROG(GMCS, gmcs, gmcs)
 
 dnl write output files
-AC_OUTPUT(Makefile common/Makefile ragel/Makefile rlcodegen/Makefile doc/Makefile test/Makefile)
+AC_OUTPUT(
+	[
+		Makefile ragel/Makefile aapl/Makefile 
+		doc/Makefile doc/ragel.1
+		contrib/Makefile
+		test/Makefile test/runtests
+		examples/Makefile
+	],
+	[chmod +x test/runtests]
+)
 
 echo "configuration of ragel complete"

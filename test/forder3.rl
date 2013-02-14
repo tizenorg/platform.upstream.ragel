@@ -12,7 +12,7 @@ struct forder
 
 %%{
 	machine forder;
-	variable curstate fsm->cs;
+	variable cs fsm->cs;
 
 	m1 = ( "" %{printf("enter m1 aa\n");} |
 			'aa'* >{printf("enter m1 aa\n");} %{printf("leave m1 aa\n");} )
@@ -23,7 +23,7 @@ struct forder
 	main := ( 
 			m1 %{printf("accept m1\n");} |
 			"" %{printf("enter m2\n");} |
-			m2 >{printf("enter m2\n");} %{printf("accpet m2\n");}
+			m2 >{printf("enter m2\n");} %{printf("accept m2\n");}
 		) . '\n';
 }%%
 
@@ -44,8 +44,6 @@ void forder_execute( struct forder *fsm, const char *_data, int _len )
 
 int forder_finish( struct forder *fsm )
 {
-	%% write eof;
-
 	if ( fsm->cs == forder_error )
 		return -1;
 	if ( fsm->cs >= forder_first_final )
@@ -85,8 +83,10 @@ through m1 b
 accept m1
 ACCEPT
 enter m2
-accpet m2
+enter m2
+accept m2
 ACCEPT
+enter m1 aa
 enter m1 aa
 leave m1 aa
 through m1 b
@@ -94,11 +94,12 @@ enter m2
 accept m1
 ACCEPT
 enter m1 aa
+enter m1 aa
 leave m1 aa
 through m1 b
 enter m2
 accept m1
-accpet m2
+accept m2
 ACCEPT
 enter m1 aa
 enter m2

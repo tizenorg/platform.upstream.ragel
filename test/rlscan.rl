@@ -2,7 +2,8 @@
  * Lexes Ragel input files.
  *
  * @LANG: c++
- * @ALLOW_GENFLAGS: -T0 -T1 -F0 -F1 -G0 -G1 -G2 -P
+ *
+ * Test works with split code gen.
  */
 
 #include <iostream>
@@ -12,7 +13,7 @@
 
 using namespace std;
 
-void escapeXML( char *data )
+void escapeXML( const char *data )
 {
 	while ( *data != 0 ) {
 		switch ( *data ) {
@@ -35,9 +36,9 @@ void escapeXML( char c )
 	}
 }
 
-void escapeXML( char *data, int len )
+void escapeXML( const char *data, int len )
 {
-	for ( char *end = data + len; data != end; data++  ) {
+	for ( const char *end = data + len; data != end; data++  ) {
 		switch ( *data ) {
 			case '<': cout << "&lt;"; break;
 			case '>': cout << "&gt;"; break;
@@ -47,7 +48,7 @@ void escapeXML( char *data, int len )
 	}
 }
 
-inline void write( char *data )
+inline void write( const char *data )
 {
 	cout << data;
 }
@@ -57,7 +58,7 @@ inline void write( char c )
 	cout << c;
 }
 
-inline void write( char *data, int len )
+inline void write( const char *data, int len )
 {
 	cout.write( data, len );
 }
@@ -80,7 +81,7 @@ inline void write( char *data, int len )
 		@{ fret; };
 
 	action emit {
-		escapeXML( tokstart, tokend-tokstart );
+		escapeXML( ts, te-ts );
 	}
 
 	#
@@ -112,7 +113,7 @@ inline void write( char *data, int len )
 			}
 		};
 
-		default => { escapeXML( *tokstart ); };
+		default => { escapeXML( *ts ); };
 	*|;
 
 	#
@@ -137,21 +138,21 @@ inline void write( char *data, int len )
 		# Word
 		word {
 			write( "<word>" );
-			write( tokstart, tokend-tokstart );
+			write( ts, te-ts );
 			write( "</word>\n" );
 		};
 
 		# Decimal integer.
 		integer {
 			write( "<int>" );
-			write( tokstart, tokend-tokstart );
+			write( ts, te-ts );
 			write( "</int>\n" );
 		};
 
 		# Hexidecimal integer.
 		hex {
 			write( "<hex>" );
-			write( tokstart, tokend-tokstart );
+			write( ts, te-ts );
 			write( "</hex>\n" );
 		};
 
@@ -161,28 +162,28 @@ inline void write( char *data, int len )
 		# Single literal string.
 		"'" ( [^'\\] | /\\./ )* "'" {
 			write( "<single_lit>" );
-			escapeXML( tokstart, tokend-tokstart );
+			escapeXML( ts, te-ts );
 			write( "</single_lit>\n" );
 		};
 
 		# Double literal string.
 		'"' ( [^"\\] | /\\./ )* '"' {
 			write( "<double_lit>" );
-			escapeXML( tokstart, tokend-tokstart );
+			escapeXML( ts, te-ts );
 			write( "</double_lit>\n" );
 		};
 
 		# Or literal.
 		'[' ( [^\]\\] | /\\./ )* ']' {
 			write( "<or_lit>" );
-			escapeXML( tokstart, tokend-tokstart );
+			escapeXML( ts, te-ts );
 			write( "</or_lit>\n" );
 		};
 
 		# Regex Literal.
 		'/' ( [^/\\] | /\\./ ) * '/' {
 			write( "<re_lit>" );
-			escapeXML( tokstart, tokend-tokstart );
+			escapeXML( ts, te-ts );
 			write( "</re_lit>\n" );
 		};
 
@@ -212,7 +213,7 @@ inline void write( char *data, int len )
 		'"' ( [^"\\] | /\\./ )* '"' => emit;
 
 		'/*' {
-			escapeXML( tokstart, tokend-tokstart );
+			escapeXML( ts, te-ts );
 			fcall c_comment;
 		};
 
@@ -231,7 +232,7 @@ inline void write( char *data, int len )
 		};
 
 		default { 
-			escapeXML( *tokstart );
+			escapeXML( *ts );
 		};
 
 		# EOF.
@@ -241,12 +242,12 @@ inline void write( char *data, int len )
 
 %% write data nofinal;
 
-void test( char *data )
+void test( const char *data )
 {
 	std::ios::sync_with_stdio(false);
 
 	int cs, act;
-	char *tokstart, *tokend;
+	const char *ts, *te;
 	int stack[1], top;
 
 	bool single_line = false;
@@ -255,8 +256,9 @@ void test( char *data )
 	%% write init;
 
 	/* Read in a block. */
-	char *p = data;
-	char *pe = data + strlen( data );
+	const char *p = data;
+	const char *pe = data + strlen( data );
+	const char *eof = pe;
 	%% write exec;
 
 	if ( cs == RagelScan_error ) {

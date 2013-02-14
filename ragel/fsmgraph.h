@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2004 Adrian Thurston <thurston@cs.queensu.ca>
+ *  Copyright 2001-2007 Adrian Thurston <thurston@complang.org>
  */
 
 /*  This file is part of Ragel.
@@ -22,7 +22,10 @@
 #ifndef _FSMGRAPH_H
 #define _FSMGRAPH_H
 
+#include "config.h"
 #include <assert.h>
+#include <iostream>
+#include <string>
 #include "common.h"
 #include "vector.h"
 #include "bstset.h"
@@ -35,21 +38,26 @@
 #include "sbsttable.h"
 #include "avlset.h"
 #include "avlmap.h"
+#include "ragel.h"
 
 //#define LOG_CONDS
 
 /* Flags that control merging. */
-#define SB_GRAPH1     0x01
-#define SB_GRAPH2     0x02
-#define SB_BOTH       0x03
-#define SB_ISFINAL    0x04
-#define SB_ISMARKED   0x08
+#define STB_GRAPH1     0x01
+#define STB_GRAPH2     0x02
+#define STB_BOTH       0x03
+#define STB_ISFINAL    0x04
+#define STB_ISMARKED   0x08
+#define STB_ONLIST     0x10
+
+using std::ostream;
 
 struct TransAp;
 struct StateAp;
 struct FsmAp;
 struct Action;
 struct LongestMatchPart;
+struct LengthDef;
 
 /* State list element for unambiguous access to list element. */
 struct FsmListEl 
@@ -76,6 +84,94 @@ extern KeyOps *keyOps;
 
 /* Transistion Action Element. */
 typedef SBstMapEl< int, Action* > ActionTableEl;
+
+/* Nodes in the tree that use this action. */
+struct NameInst;
+struct InlineList;
+typedef Vector<NameInst*> ActionRefs;
+
+/* Element in list of actions. Contains the string for the code to exectute. */
+struct Action 
+:
+	public DListEl<Action>,
+	public AvlTreeEl<Action>
+{
+public:
+
+	Action( const InputLoc &loc, const char *name, InlineList *inlineList, int condId )
+	:
+		loc(loc),
+		name(name),
+		inlineList(inlineList), 
+		actionId(-1),
+		numTransRefs(0),
+		numToStateRefs(0),
+		numFromStateRefs(0),
+		numEofRefs(0),
+		numCondRefs(0),
+		anyCall(false),
+		isLmAction(false),
+		condId(condId)
+	{
+	}
+
+	/* Key for action dictionary. */
+	const char *getKey() const { return name; }
+
+	/* Data collected during parse. */
+	InputLoc loc;
+	const char *name;
+	InlineList *inlineList;
+	int actionId;
+
+	void actionName( ostream &out )
+	{
+		if ( name != 0 )
+			out << name;
+		else
+			out << loc.line << ":" << loc.col;
+	}
+
+	/* Places in the input text that reference the action. */
+	ActionRefs actionRefs;
+
+	/* Number of references in the final machine. */
+	int numRefs() 
+		{ return numTransRefs + numToStateRefs + numFromStateRefs + numEofRefs; }
+	int numTransRefs;
+	int numToStateRefs;
+	int numFromStateRefs;
+	int numEofRefs;
+	int numCondRefs;
+	bool anyCall;
+
+	bool isLmAction;
+	int condId;
+};
+
+struct CmpCondId
+{
+	static inline int compare( const Action *cond1, const Action *cond2 )
+	{
+		if ( cond1->condId < cond2->condId )
+			return -1;
+		else if ( cond1->condId > cond2->condId )
+			return 1;
+		return 0;
+	}
+};
+
+/* A list of actions. */
+typedef DList<Action> ActionList;
+typedef AvlTree<Action, char *, CmpStr> ActionDict;
+
+/* Structure for reverse action mapping. */
+struct RevActionMapEl
+{
+	char *name;
+	InputLoc location;
+};
+
 
 /* Transition Action Table.  */
 struct ActionTable 
@@ -285,10 +381,8 @@ struct TransAp
 		highKey(other.highKey),
 		fromState(0), toState(0),
 		actionTable(other.actionTable),
-		priorTable(other.priorTable)
-	{
-		assert( lmActionTable.length() == 0 && other.lmActionTable.length() == 0 );
-	}
+		priorTable(other.priorTable),
+		lmActionTable(other.lmActionTable) {}
 
 	Key lowKey, highKey;
 	StateAp *fromState;
@@ -442,9 +536,40 @@ typedef BstSet<int> EntryIdSet;
 /* Set of longest match items that may be active in a given state. */
 typedef BstSet<LongestMatchPart*> LmItemSet;
 
+/* A Conditions which is to be 
+ * transfered on pending out transitions. */
+struct OutCond
+{
+	OutCond( Action *action, bool sense )
+		: action(action), sense(sense) {}
+
+	Action *action;
+	bool sense;
+};
+
+struct CmpOutCond
+{
+	static int compare( const OutCond &outCond1, const OutCond &outCond2 )
+	{
+		if ( outCond1.action < outCond2.action )
+			return -1;
+		else if ( outCond1.action > outCond2.action )
+			return 1;
+		else if ( outCond1.sense < outCond2.sense )
+			return -1;
+		else if ( outCond1.sense > outCond2.sense )
+			return 1;
+		return 0;
+	}
+};
+
+/* Set of conditions to be transfered to on pending out transitions. */
+typedef SBstSet< OutCond, CmpOutCond > OutCondSet;
+typedef CmpSTable< OutCond, CmpOutCond > CmpOutCondSet;
+
 /* Conditions. */
-typedef BstSet< Action*, CmpOrd<Action*> > CondSet;
-typedef CmpTable< Action*, CmpOrd<Action*> > CmpCondSet;
+typedef BstSet< Action*, CmpCondId > CondSet;
+typedef CmpTable< Action*, CmpCondId > CmpCondSet;
 
 struct CondSpace
 	: public AvlTreeEl<CondSpace>
@@ -516,15 +641,27 @@ struct Removal
 
 struct CondData
 {
-	CondData() : nextCondKey(0) {}
+	CondData() : lastCondKey(0) {}
 
 	/* Condition info. */
-	Key nextCondKey;
+	Key lastCondKey;
 
 	CondSpaceMap condSpaceMap;
 };
 
 extern CondData *condData;
+
+struct FsmConstructFail
+{
+	enum Reason
+	{
+		CondNoKeySpace
+	};
+
+	FsmConstructFail( Reason reason ) 
+		: reason(reason) {}
+	Reason reason;
+};
 
 /* State class that implements actions and priorities. */
 struct StateAp 
@@ -534,13 +671,17 @@ struct StateAp
 	~StateAp();
 
 	/* Is the state final? */
-	bool isFinState() { return stateBits & SB_ISFINAL; }
+	bool isFinState() { return stateBits & STB_ISFINAL; }
 
 	/* Out transition list and the pointer for the default out trans. */
 	TransList outList;
 
 	/* In transition Lists. */
 	TransInList inList;
+
+	/* Set only during scanner construction when actions are added. NFA to DFA
+	 * code can ignore this. */
+	StateAp *eofTarget;
 
 	/* Entry points into the state. */
 	EntryIdSet entryIds;
@@ -616,7 +757,7 @@ struct StateAp
 	ActionTable outActionTable;
 
 	/* Conditions to add to any future transiions that leave via this sttate. */
-	ActionSet outCondSet;
+	OutCondSet outCondSet;
 
 	/* Error action tables. */
 	ErrActionTable errActionTable;
@@ -970,6 +1111,11 @@ struct FsmAp
 	/* The start state. */
 	StateAp *startState;
 
+	/* Error state, possibly created only when the final machine has been
+	 * created and the XML machine is about to be written. No transitions
+	 * point to this state. */
+	StateAp *errState;
+
 	/* The set of final states. */
 	StateSet finStateSet;
 
@@ -987,7 +1133,9 @@ struct FsmAp
 	void leaveFsmPrior( int ordering, PriorDesc *prior );
 
 	/* Action setting support. */
+	void transferOutActions( StateAp *state );
 	void transferErrorActions( StateAp *state, int transferPoint );
+	void setErrorActions( StateAp *state, const ActionTable &other );
 	void setErrorAction( StateAp *state, int ordering, Action *action );
 
 	/* Fill all spaces in a transition list with an error transition. */
@@ -1008,13 +1156,13 @@ struct FsmAp
 	CondSpace *addCondSpace( const CondSet &condSet );
 
 	void findEmbedExpansions( ExpansionList &expansionList, 
-		StateAp *destState, Action *condAction );
-	void embedCondition( MergeData &md, StateAp *state, Action *condAction );
-	void embedCondition( StateAp *state, Action *condAction );
+		StateAp *destState, Action *condAction, bool sense );
+	void embedCondition( MergeData &md, StateAp *state, Action *condAction, bool sense );
+	void embedCondition( StateAp *state, Action *condAction, bool sense );
 
-	void startFsmCondition( Action *condAction );
-	void allTransCondition( Action *condAction );
-	void leaveFsmCondition( Action *condAction );
+	void startFsmCondition( Action *condAction, bool sense );
+	void allTransCondition( Action *condAction, bool sense );
+	void leaveFsmCondition( Action *condAction, bool sense );
 
 	/* Set error actions to execute. */
 	void startErrorAction( int ordering, Action *action, int transferPoint );
@@ -1261,8 +1409,13 @@ struct FsmAp
 	 * copied into this machine. */
 	void copyInEntryPoints( FsmAp *other );
 
-	/* Set State numbers starting at 0. */
-	void setStateNumbers();
+	/* Ordering states. */
+	void depthFirstOrdering( StateAp *state );
+	void depthFirstOrdering();
+	void sortStatesByFinal();
+
+	/* Set sqequential state numbers starting at 0. */
+	void setStateNumbers( int base );
 
 	/* Unset all final states. */
 	void unsetAllFinStates();
@@ -1363,7 +1516,16 @@ struct FsmAp
 	/* Merge neighboring transitions go to the same state and have the same
 	 * transitions data. */
 	void compressTransitions();
+
+	/* Returns true if there is a transtion (either explicit or by a gap) to
+	 * the error state. */
+	bool checkErrTrans( StateAp *state, TransAp *trans );
+	bool checkErrTransFinish( StateAp *state );
+	bool hasErrorTrans();
+
+	/* Check if a machine defines a single character. This is useful in
+	 * validating ranges and machines to export. */
+	bool checkSingleCharMachine( );
 };
 
-
-#endif /* _FSMGRAPH_H */
+#endif

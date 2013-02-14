@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2006 Adrian Thurston <thurston@cs.queensu.ca>
+ *  Copyright 2001-2006 Adrian Thurston <thurston@complang.org>
  */
 
 /*  This file is part of Ragel.
@@ -22,6 +22,7 @@
 #ifndef _PARSETREE_H
 #define _PARSETREE_H
 
+#include "ragel.h"
 #include "avlmap.h"
 #include "bstmap.h"
 #include "vector.h"
@@ -50,13 +51,6 @@ enum BuiltinMachine
 	BT_Empty
 };
 
-/* Location in an input file. */
-struct InputLoc
-{
-	char *fileName;
-	int line;
-	int col;
-};
 
 struct ParseData;
 
@@ -72,11 +66,12 @@ struct FactorWithNeg;
 struct Factor;
 struct Expression;
 struct Join;
-struct JoinOrLm;
+struct MachineDef;
 struct LongestMatch;
 struct LongestMatchPart;
 struct LmPartList;
 struct Range;
+struct LengthDef;
 
 /* Type of augmentation. Describes locations in the machine. */
 enum AugType
@@ -187,16 +182,29 @@ struct ParserAction
 	Action *action;
 };
 
+struct ConditionTest
+{
+	ConditionTest( const InputLoc &loc, AugType type, Action *action, bool sense ) : 
+		loc(loc), type(type), action(action), sense(sense) { }
+
+	InputLoc loc;
+	AugType type;
+	Action *action;
+	bool sense;
+};
+
 struct Token
 {
 	char *data;
 	int length;
 	InputLoc loc;
 
-	void prepareLitString( Token &result, bool &caseInsensitive );
 	void append( const Token &other );
-	void set( char *str, int len );
+	void set( const char *str, int len );
 };
+
+char *prepareLitString( const InputLoc &loc, const char *src, long length, 
+			long &resLen, bool &caseInsensitive );
 
 /* Store the value and type of a priority augmentation. */
 struct PriorityAug
@@ -214,16 +222,17 @@ struct PriorityAug
  */
 struct VarDef
 {
-	VarDef( char *name, JoinOrLm *joinOrLm )
-		: name(name), joinOrLm(joinOrLm) { }
+	VarDef( const char *name, MachineDef *machineDef )
+		: name(name), machineDef(machineDef), isExport(false) { }
 	
 	/* Parse tree traversal. */
 	FsmAp *walk( ParseData *pd );
 	void makeNameTree( const InputLoc &loc, ParseData *pd );
 	void resolveNameRefs( ParseData *pd );
 
-	char *name;
-	JoinOrLm *joinOrLm;
+	const char *name;
+	MachineDef *machineDef;
+	bool isExport;
 };
 
 
@@ -292,8 +301,9 @@ struct LongestMatch
 	FsmAp *walk( ParseData *pd );
 	void makeNameTree( ParseData *pd );
 	void resolveNameRefs( ParseData *pd );
-	void runLonestMatch( ParseData *pd, FsmAp *graph );
-	Action *newAction( ParseData *pd, const InputLoc &loc, char *name, 
+	void transferScannerLeavingActions( FsmAp *graph );
+	void runLongestMatch( ParseData *pd, FsmAp *graph );
+	Action *newAction( ParseData *pd, const InputLoc &loc, const char *name, 
 			InlineList *inlineList );
 	void makeActions( ParseData *pd );
 	void findName( ParseData *pd );
@@ -301,7 +311,7 @@ struct LongestMatch
 
 	InputLoc loc;
 	LmPartList *longestMatchList;
-	char *name;
+	const char *name;
 
 	Action *lmActSelect;
 	bool lmSwitchHandlesError;
@@ -313,17 +323,20 @@ struct LongestMatch
 /* List of Expressions. */
 typedef DList<Expression> ExprList;
 
-struct JoinOrLm
+struct MachineDef
 {
 	enum Type {
 		JoinType,
-		LongestMatchType
+		LongestMatchType,
+		LengthDefType
 	};
 
-	JoinOrLm( Join *join ) : 
-		join(join), type(JoinType) {}
-	JoinOrLm( LongestMatch *longestMatch ) :
-		longestMatch(longestMatch), type(LongestMatchType) {}
+	MachineDef( Join *join )
+		: join(join), longestMatch(0), lengthDef(0), type(JoinType) {}
+	MachineDef( LongestMatch *longestMatch )
+		: join(0), longestMatch(longestMatch), lengthDef(0), type(LongestMatchType) {}
+	MachineDef( LengthDef *lengthDef )
+		: join(0), longestMatch(0), lengthDef(lengthDef), type(LengthDefType) {}
 
 	FsmAp *walk( ParseData *pd );
 	void makeNameTree( ParseData *pd );
@@ -331,6 +344,7 @@ struct JoinOrLm
 	
 	Join *join;
 	LongestMatch *longestMatch;
+	LengthDef *lengthDef;
 	Type type;
 };
 
@@ -459,7 +473,7 @@ struct FactorWithAug
 	PriorDesc *priorDescs;
 	Vector<Label> labels;
 	Vector<EpsilonLink> epsilonLinks;
-	Vector<ParserAction> conditions;
+	Vector<ConditionTest> conditions;
 
 	FactorWithRep *factorWithRep;
 };
@@ -486,8 +500,8 @@ struct FactorWithRep
 		factorWithNeg(0), lowerRep(lowerRep), 
 		upperRep(upperRep), type(type) { }
 	
-	FactorWithRep( const InputLoc &loc, FactorWithNeg *factorWithNeg )
-		: loc(loc), factorWithNeg(factorWithNeg), type(FactorWithNegType) { }
+	FactorWithRep( FactorWithNeg *factorWithNeg )
+		: factorWithNeg(factorWithNeg), type(FactorWithNegType) { }
 
 	~FactorWithRep();
 
@@ -518,8 +532,8 @@ struct FactorWithNeg
 	FactorWithNeg( const InputLoc &loc, FactorWithNeg *factorWithNeg, Type type) :
 		loc(loc), factorWithNeg(factorWithNeg), factor(0), type(type) { }
 
-	FactorWithNeg( const InputLoc &loc, Factor *factor ) :
-		loc(loc), factorWithNeg(0), factor(factor), type(FactorType) { }
+	FactorWithNeg( Factor *factor ) :
+		factorWithNeg(0), factor(factor), type(FactorType) { }
 
 	~FactorWithNeg();
 
@@ -563,8 +577,8 @@ struct Factor
 		reItem(reItem), type(OrExprType) { }
 
 	/* Construct with a regular expression. */
-	Factor( RegExpr *regExp ) :
-		regExp(regExp), type(RegExprType) { }
+	Factor( RegExpr *regExpr ) :
+		regExpr(regExpr), type(RegExprType) { }
 
 	/* Construct with a reference to a var def. */
 	Factor( const InputLoc &loc, VarDef *varDef ) :
@@ -590,7 +604,7 @@ struct Factor
 	Literal *literal;
 	Range *range;
 	ReItem *reItem;
-	RegExpr *regExp;
+	RegExpr *regExpr;
 	VarDef *varDef;
 	Join *join;
 	LongestMatch *longestMatch;
@@ -606,7 +620,6 @@ struct Range
 
 	~Range();
 	FsmAp *walk( ParseData *pd );
-	bool verifyRangeFsm( FsmAp *rangeEnd );
 
 	Literal *lowerLit;
 	Literal *upperLit;
@@ -634,14 +647,14 @@ struct RegExpr
 	/* Constructors. */
 	RegExpr() : 
 		type(Empty), caseInsensitive(false) { }
-	RegExpr(RegExpr *regExp, ReItem *item) : 
-		regExp(regExp), item(item), 
+	RegExpr(RegExpr *regExpr, ReItem *item) : 
+		regExpr(regExpr), item(item), 
 		type(RecurseItem), caseInsensitive(false) { }
 
 	~RegExpr();
 	FsmAp *walk( ParseData *pd, RegExpr *rootRegex );
 
-	RegExpr *regExp;
+	RegExpr *regExpr;
 	ReItem *item;
 	RegExpType type;
 	bool caseInsensitive;
@@ -756,6 +769,4 @@ struct InlineItem
  * ptreetypes, which should be just typedef forwards. */
 struct InlineList : public DList<InlineItem> { };
 
-
-
-#endif /* _PARSETREE_H */
+#endif
