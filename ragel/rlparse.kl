@@ -1,5 +1,5 @@
 /*
- *  Copyright 2006 Adrian Thurston <thurston@cs.queensu.ca>
+ *  Copyright 2001-2007 Adrian Thurston <thurston@complang.org>
  */
 
 /*  This file is part of Ragel.
@@ -22,12 +22,12 @@
 #include "rlparse.h"
 #include "ragel.h"
 #include <iostream>
+#include <errno.h>
+#include <stdlib.h>
 
 using std::cout;
 using std::cerr;
 using std::endl;
-
-ParserDict parserDict;
 
 %%{
 
@@ -35,7 +35,10 @@ parser Parser;
 
 include "rlparse.kh";
 
-start: statement_list;
+start: section_list;
+
+section_list: section_list statement_list TK_EndSection;
+section_list: ;
 
 statement_list: statement_list statement;
 statement_list: ;
@@ -48,29 +51,95 @@ statement: range_spec commit;
 statement: getkey_spec commit;
 statement: access_spec commit;
 statement: variable_spec commit;
+statement: export_block commit;
+statement: pre_push_spec commit;
+statement: post_pop_spec commit;
+statement: length_spec commit;
 
-# We use end section tokens to draw firm boundaries between sections.
-statement: TK_EndSection;
+length_spec:
+	KW_Length TK_Word ';'
+	final {
+		LengthDef *lengthDef = new LengthDef( $2->data );
+		pd->lengthDefList.append( lengthDef );
+
+		/* Generic creation of machine for instantiation and assignment. */
+		MachineDef *machineDef = new MachineDef( lengthDef );
+		tryMachineDef( $2->loc, $2->data, machineDef, false );
+	};
+
+pre_push_spec:
+	KW_PrePush '{' inline_block '}' 
+	final {
+		if ( pd->prePushExpr != 0 ) {
+			/* Recover by just ignoring the duplicate. */
+			error($2->loc) << "pre_push code already defined" << endl;
+		}
+
+		pd->prePushExpr = $3->inlineList;
+	};
+
+
+post_pop_spec:
+	KW_PostPop '{' inline_block '}' 
+	final {
+		if ( pd->postPopExpr != 0 ) {
+			/* Recover by just ignoring the duplicate. */
+			error($2->loc) << "post_pop code already defined" << endl;
+		}
+
+		pd->postPopExpr = $3->inlineList;
+	};
+
+
+export_open: KW_Export 
+	final {
+		exportContext.append( true );
+	};
+
+nonterm opt_export
+{
+	bool isSet;
+};
+
+opt_export: export_open final { $$->isSet = true; };
+opt_export: final { $$->isSet = false; };
+
+export_block: export_open '{' statement_list '}' 
+	final {
+		exportContext.remove( exportContext.length()-1 );
+	};
 
 assignment:
-	machine_name '=' join ';' final {
+	opt_export machine_name '=' join ';' final {
 		/* Main machine must be an instance. */
 		bool isInstance = false;
-		if ( strcmp($1->token.data, machineMain) == 0 ) {
-			warning($1->token.loc) << 
+		if ( strcmp($2->token.data, mainMachine) == 0 ) {
+			warning($2->token.loc) << 
 					"main machine will be implicitly instantiated" << endl;
 			isInstance = true;
 		}
 
 		/* Generic creation of machine for instantiation and assignment. */
-		JoinOrLm *joinOrLm = new JoinOrLm( $3->join );
-		tryMachineDef( $1->token.loc, $1->token.data, joinOrLm, isInstance );
+		MachineDef *machineDef = new MachineDef( $4->join );
+		tryMachineDef( $2->token.loc, $2->token.data, machineDef, isInstance );
+
+		if ( $1->isSet )
+			exportContext.remove( exportContext.length()-1 );
+
+		$4->join->loc = $3->loc;
 	};
 
 instantiation: 
-	machine_name TK_ColonEquals join_or_lm ';' final {
+	opt_export machine_name TK_ColonEquals join_or_lm ';' final {
 		/* Generic creation of machine for instantiation and assignment. */
-		tryMachineDef( $1->token.loc, $1->token.data, $3->joinOrLm, true );
+		tryMachineDef( $2->token.loc, $2->token.data, $4->machineDef, true );
+
+		if ( $1->isSet )
+			exportContext.remove( exportContext.length()-1 );
+
+		/* Pass a location to join_or_lm */
+		if ( $4->machineDef->join != 0 )
+			$4->machineDef->join->loc = $3->loc;
 	};
 
 type token_type
@@ -82,8 +151,6 @@ nonterm machine_name uses token_type;
 
 machine_name: 
 	TK_Word final {
-		//cerr << "parser: machine name" << endl;
-
 		/* Make/get the priority key. The name may have already been referenced
 		 * and therefore exist. */
 		PriorDictEl *priorDictEl;
@@ -109,7 +176,8 @@ action_spec:
 		else {
 			//cerr << "NEW ACTION " << $2->data << " " << $4->inlineList << endl;
 			/* Add the action to the list of actions. */
-			Action *newAction = new Action( $3->loc, $2->data, $4->inlineList );
+			Action *newAction = new Action( $3->loc, $2->data, 
+					$4->inlineList, pd->nextCondId++ );
 
 			/* Insert to list and dict. */
 			pd->actionList.append( newAction );
@@ -121,7 +189,7 @@ action_spec:
 # semi-colon.
 alphtype_spec:
 	KW_AlphType TK_Word TK_Word ';' final {
-		if ( ! pd->setAlphType( $2->data, $3->data ) ) {
+		if ( ! pd->setAlphType( $1->loc, $2->data, $3->data ) ) {
 			// Recover by ignoring the alphtype statement.
 			error($2->loc) << "\"" << $2->data << 
 					" " << $3->data << "\" is not a valid alphabet type" << endl;
@@ -130,7 +198,7 @@ alphtype_spec:
 
 alphtype_spec:
 	KW_AlphType TK_Word ';' final {
-		if ( ! pd->setAlphType( $2->data ) ) {
+		if ( ! pd->setAlphType( $1->loc, $2->data ) ) {
 			// Recover by ignoring the alphtype statement.
 			error($2->loc) << "\"" << $2->data << 
 					"\" is not a valid alphabet type" << endl;
@@ -160,11 +228,9 @@ access_spec:
 variable_spec:
 	KW_Variable opt_whitespace TK_Word inline_expr ';' final {
 		/* FIXME: Need to implement the rest of this. */
-		if ( strcmp( $3->data, "curstate" ) == 0 )
-			pd->curStateExpr = $4->inlineList;
-		else {
-			error($3->loc) << "sorry, unimplementd" << endl;
-		}
+		bool wasSet = pd->setVariable( $3->data, $4->inlineList );
+		if ( !wasSet )
+			error($3->loc) << "bad variable name" << endl;
 	};
 
 opt_whitespace: opt_whitespace IL_WhiteSpace;
@@ -176,12 +242,12 @@ opt_whitespace: ;
 
 nonterm join_or_lm
 {
-	JoinOrLm *joinOrLm;
+	MachineDef *machineDef;
 };
 
 join_or_lm: 
 	join final {
-		$$->joinOrLm = new JoinOrLm( $1->join );
+		$$->machineDef = new MachineDef( $1->join );
 	};
 join_or_lm:
 	TK_BarStar lm_part_list '*' '|' final {
@@ -191,7 +257,7 @@ join_or_lm:
 		pd->lmList.append( lm );
 		for ( LmPartList::Iter lmp = *($2->lmPartList); lmp.lte(); lmp++ )
 			lmp->longestMatch = lm;
-		$$->joinOrLm = new JoinOrLm( lm );
+		$$->machineDef = new MachineDef( lm );
 	};
 
 nonterm lm_part_list
@@ -200,13 +266,15 @@ nonterm lm_part_list
 };
 
 lm_part_list:
-	lm_part_list longest_match_part final {
+	lm_part_list longest_match_part
+	final {
 		if ( $2->lmPart != 0 ) 
 			$1->lmPartList->append( $2->lmPart );
 		$$->lmPartList = $1->lmPartList;
 	};
 lm_part_list:
-	longest_match_part final {
+	longest_match_part
+	final {
 		/* Create a new list with the part. */
 		$$->lmPartList = new LmPartList;
 		if ( $1->lmPart != 0 )
@@ -230,6 +298,10 @@ longest_match_part:
 			action->isLmAction = true;
 		$$->lmPart = new LongestMatchPart( $1->join, action, 
 				$3->loc, pd->nextLongestMatchId++ );
+
+		/* Provide a location to join. Unfortunately We don't
+		 * have the start of the join as in other occurances. Use the end. */
+		$1->join->loc = $3->loc;
 	};
 
 nonterm opt_lm_part_action
@@ -273,28 +345,49 @@ nonterm expression
 };
 
 expression: 
-	expression '|' term final {
+	expression '|' term_short final {
 		$$->expression = new Expression( $1->expression, 
 				$3->term, Expression::OrType );
 	};
 expression: 
-	expression '&' term final {
+	expression '&' term_short final {
 		$$->expression = new Expression( $1->expression, 
 				$3->term, Expression::IntersectType );
 	};
 expression: 
-	expression pri(1) '-' term final {
+	expression '-' term_short final {
 		$$->expression = new Expression( $1->expression, 
 				$3->term, Expression::SubtractType );
 	};
 expression: 
-	expression TK_DashDash term final {
+	expression TK_DashDash term_short final {
 		$$->expression = new Expression( $1->expression, 
 				$3->term, Expression::StrongSubtractType );
 	};
 expression: 
-	term final {
+	term_short final {
 		$$->expression = new Expression( $1->term );
+	};
+
+# This is where we resolve the ambiguity involving -. By default ragel tries to
+# do a longest match, which gives precedence to a concatenation because it is
+# innermost. What we need is to force term into a shortest match so that when -
+# is seen it doesn't try to extend term with a concatenation, but ends term and
+# goes for a subtraction.
+#
+# The shortest tag overrides the default longest match action ordering strategy
+# and instead forces a shortest match stragegy. The wrap the term production in
+# a new nonterminal 'term_short' to guarantee the shortest match behaviour.
+
+shortest term_short;
+nonterm term_short
+{
+	Term *term;
+};
+
+term_short:
+	term final {
+		$$->term = $1->term;
 	};
 
 nonterm term
@@ -304,7 +397,6 @@ nonterm term
 
 term:
 	term factor_with_label final {
-		/* FIXME: Need to reject this if of the form (term . -num). */
 		$$->term = new Term( $1->term, $2->factorWithAug );
 	};
 term:
@@ -390,8 +482,14 @@ factor_with_aug:
 	};
 factor_with_aug:
 	factor_with_aug aug_type_cond action_embed final {
-		$1->factorWithAug->conditions.append( ParserAction( $2->loc, 
-				$2->augType, 0, $3->action ) );
+		$1->factorWithAug->conditions.append( ConditionTest( $2->loc, 
+				$2->augType, $3->action, true ) );
+		$$->factorWithAug = $1->factorWithAug;
+	};
+factor_with_aug:
+	factor_with_aug aug_type_cond '!' action_embed final {
+		$1->factorWithAug->conditions.append( ConditionTest( $2->loc, 
+				$2->augType, $4->action, false ) );
 		$$->factorWithAug = $1->factorWithAug;
 	};
 factor_with_aug:
@@ -468,6 +566,8 @@ aug_type_cond: '$' KW_When final { $$->loc = $1->loc; $$->augType = at_all; };
 aug_type_cond: TK_LeavingCond final { $$->loc = $1->loc; $$->augType = at_leave; };
 aug_type_cond: '%' KW_When final { $$->loc = $1->loc; $$->augType = at_leave; };
 aug_type_cond: KW_When final { $$->loc = $1->loc; $$->augType = at_all; };
+aug_type_cond: KW_InWhen final { $$->loc = $1->loc; $$->augType = at_start; };
+aug_type_cond: KW_OutWhen final { $$->loc = $1->loc; $$->augType = at_leave; };
 
 #
 # To state actions.
@@ -662,6 +762,7 @@ type action_ref
 nonterm action_embed uses action_ref;
 
 action_embed: action_embed_word final { $$->action = $1->action; };
+action_embed: '(' action_embed_word ')' final { $$->action = $2->action; };
 action_embed: action_embed_block final { $$->action = $1->action; };
 
 nonterm action_embed_word uses action_ref;
@@ -686,7 +787,7 @@ nonterm action_embed_block uses action_ref;
 action_embed_block:
 	'{' inline_block '}' final {
 		/* Create the action, add it to the list and pass up. */
-		Action *newAction = new Action( $1->loc, 0, $2->inlineList );
+		Action *newAction = new Action( $1->loc, 0, $2->inlineList, pd->nextCondId++ );
 		pd->actionList.append( newAction );
 		$$->action = newAction;
 	};
@@ -720,7 +821,7 @@ priority_aug:
 		// Convert the priority number to a long. Check for overflow.
 		errno = 0;
 		//cerr << "PRIOR AUG: " << $1->token.data << endl;
-		int aug = strtol( $1->token.data, 0, 10 );
+		long aug = strtol( $1->token.data, 0, 10 );
 		if ( errno == ERANGE && aug == LONG_MAX ) {
 			/* Priority number too large. Recover by setting the priority to 0. */
 			error($1->token.loc) << "priority number " << $1->token.data << 
@@ -826,8 +927,7 @@ factor_with_rep:
 	};
 factor_with_rep:
 	factor_with_neg final {
-		$$->factorWithRep = new FactorWithRep( 
-				$1->factorWithNeg->loc, $1->factorWithNeg );
+		$$->factorWithRep = new FactorWithRep( $1->factorWithNeg );
 	};
 
 nonterm factor_rep_num
@@ -839,7 +939,7 @@ factor_rep_num:
 	TK_UInt final {
 		// Convert the priority number to a long. Check for overflow.
 		errno = 0;
-		int rep = strtol( $1->data, 0, 10 );
+		long rep = strtol( $1->data, 0, 10 );
 		if ( errno == ERANGE && rep == LONG_MAX ) {
 			// Repetition too large. Recover by returing repetition 1. */
 			error($1->loc) << "repetition number " << $1->data << " overflows" << endl;
@@ -873,7 +973,7 @@ factor_with_neg:
 	};
 factor_with_neg:
 	factor final {
-		$$->factorWithNeg = new FactorWithNeg( $1->factor->loc, $1->factor );
+		$$->factorWithNeg = new FactorWithNeg( $1->factor );
 	};
 
 nonterm factor
@@ -942,6 +1042,7 @@ factor:
 	'(' join ')' final {
 		/* Create a new factor going to a parenthesized join. */
 		$$->factor = new Factor( $2->join );
+		$2->join->loc = $1->loc;
 	};
 
 nonterm range_lit
@@ -1342,15 +1443,32 @@ state_ref_names:
 
 }%%
 
+%%{
+	write types;
+	write data;
+}%%
+
+void Parser::init()
+{
+	%% write init;
+}
+
+int Parser::parseLangEl( int type, const Token *token )
+{
+	%% write exec;
+	return errCount == 0 ? 0 : -1;
+}
+
 void Parser::tryMachineDef( InputLoc &loc, char *name, 
-		JoinOrLm *joinOrLm, bool isInstance )
+		MachineDef *machineDef, bool isInstance )
 {
 	GraphDictEl *newEl = pd->graphDict.insert( name );
 	if ( newEl != 0 ) {
 		/* New element in the dict, all good. */
-		newEl->value = new VarDef( name, joinOrLm );
+		newEl->value = new VarDef( name, machineDef );
 		newEl->isInstance = isInstance;
 		newEl->loc = loc;
+		newEl->value->isExport = exportContext[exportContext.length()-1];
 
 		/* It it is an instance, put on the instance list. */
 		if ( isInstance )
@@ -1362,24 +1480,17 @@ void Parser::tryMachineDef( InputLoc &loc, char *name,
 	}
 }
 
-ostream &error( const InputLoc &loc )
+ostream &Parser::parse_error( int tokId, Token &token )
 {
-	gblErrorCount += 1;
-	assert( loc.fileName != 0 );
-	cerr << loc.fileName << ":" << loc.line << ": ";
-	return cerr;
-}
-
-ostream &Parser::parser_error( int tokId, Token &token )
-{
+	/* Maintain the error count. */
 	gblErrorCount += 1;
 
-	cerr << token.loc.fileName << ":" << token.loc.line << ": ";
+	cerr << token.loc << ": ";
 	cerr << "at token ";
 	if ( tokId < 128 )
-		cerr << "\"" << lelNames[tokId] << "\"";
+		cerr << "\"" << Parser_lelNames[tokId] << "\"";
 	else 
-		cerr << lelNames[tokId];
+		cerr << Parser_lelNames[tokId];
 	if ( token.data != 0 )
 		cerr << " with data \"" << token.data << "\"";
 	cerr << ": ";
@@ -1393,9 +1504,9 @@ int Parser::token( InputLoc &loc, int tokId, char *tokstart, int toklen )
 	token.data = tokstart;
 	token.length = toklen;
 	token.loc = loc;
-	int res = parseLangEl( tokId, token );
+	int res = parseLangEl( tokId, &token );
 	if ( res < 0 ) {
-		parser_error(tokId, token) << "parse error" << endl;
+		parse_error(tokId, token) << "parse error" << endl;
 		exit(1);
 	}
 	return res;

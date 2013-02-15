@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2006 Adrian Thurston <thurston@cs.queensu.ca>
+ *  Copyright 2001-2006 Adrian Thurston <thurston@complang.org>
  */
 
 /*  This file is part of Ragel.
@@ -37,28 +37,28 @@ ostream &operator<<( ostream &out, const NameInst &nameInst );
 /* Convert the literal string which comes in from the scanner into an array of
  * characters with escapes and options interpreted. Also null terminates the
  * string. Though this null termination should not be relied on for
- * interpreting literals in the parser because the string may contain a
- * literal string with \0 */
-void Token::prepareLitString( Token &result, bool &caseInsensitive )
+ * interpreting literals in the parser because the string may contain \0 */
+char *prepareLitString( const InputLoc &loc, const char *data, long length, 
+		long &resLen, bool &caseInsensitive )
 {
-	result.data = new char[this->length+1];
+	char *resData = new char[length+1];
 	caseInsensitive = false;
 
-	char *src = this->data + 1;
-	char *end = this->data + this->length - 1;
+	const char *src = data + 1;
+	const char *end = data + length - 1;
 
 	while ( *end != '\'' && *end != '\"' ) {
 		if ( *end == 'i' )
 			caseInsensitive = true;
 		else {
-			error( this->loc ) << "literal string '" << *end << 
+			error( loc ) << "literal string '" << *end << 
 					"' option not supported" << endl;
 		}
 		end -= 1;
 	}
 
-	char *dest = result.data;
-	int len = 0;
+	char *dest = resData;
+	long len = 0;
 	while ( src != end ) {
 		if ( *src == '\\' ) {
 			switch ( src[1] ) {
@@ -79,10 +79,11 @@ void Token::prepareLitString( Token &result, bool &caseInsensitive )
 			dest[len++] = *src++;
 		}
 	}
-	result.length = len;
-	result.data[result.length] = 0;
-}
 
+	resLen = len;
+	resData[resLen] = 0;
+	return resData;
+}
 
 FsmAp *VarDef::walk( ParseData *pd )
 {
@@ -90,7 +91,7 @@ FsmAp *VarDef::walk( ParseData *pd )
 	NameFrame nameFrame = pd->enterNameScope( true, 1 );
 
 	/* Recurse on the expression. */
-	FsmAp *rtnVal = joinOrLm->walk( pd );
+	FsmAp *rtnVal = machineDef->walk( pd );
 	
 	/* Do the tranfer of local error actions. */
 	LocalErrDictEl *localErrDictEl = pd->localErrDict.find( name );
@@ -102,7 +103,7 @@ FsmAp *VarDef::walk( ParseData *pd )
 	/* If the expression below is a join operation with multiple expressions
 	 * then it just had epsilon transisions resolved. If it is a join
 	 * with only a single expression then run the epsilon op now. */
-	if ( joinOrLm->type == JoinOrLm::JoinType && joinOrLm->join->exprList.length() == 1 )
+	if ( machineDef->type == MachineDef::JoinType && machineDef->join->exprList.length() == 1 )
 		rtnVal->epsilonOp();
 
 	/* We can now unset entry points that are not longer used. */
@@ -112,7 +113,7 @@ FsmAp *VarDef::walk( ParseData *pd )
 	 * the graph. */
 	if ( pd->curNameInst->numRefs > 0 )
 		rtnVal->setEntry( pd->curNameInst->id, rtnVal->startState );
-	
+
 	/* Pop the name scope. */
 	pd->popNameScope( nameFrame );
 	return rtnVal;
@@ -124,11 +125,11 @@ void VarDef::makeNameTree( const InputLoc &loc, ParseData *pd )
 	NameInst *prevNameInst = pd->curNameInst;
 	pd->curNameInst = pd->addNameInst( loc, name, false );
 
-	if ( joinOrLm->type == JoinOrLm::LongestMatchType )
+	if ( machineDef->type == MachineDef::LongestMatchType )
 		pd->curNameInst->isLongestMatch = true;
 
 	/* Recurse. */
-	joinOrLm->makeNameTree( pd );
+	machineDef->makeNameTree( pd );
 
 	/* The name scope ends, pop the name instantiation. */
 	pd->curNameInst = prevNameInst;
@@ -140,7 +141,7 @@ void VarDef::resolveNameRefs( ParseData *pd )
 	NameFrame nameFrame = pd->enterNameScope( true, 1 );
 
 	/* Recurse. */
-	joinOrLm->resolveNameRefs( pd );
+	machineDef->resolveNameRefs( pd );
 	
 	/* The name scope ends, pop the name instantiation. */
 	pd->popNameScope( nameFrame );
@@ -162,9 +163,9 @@ InputLoc LongestMatchPart::getLoc()
  */
 
 Action *LongestMatch::newAction( ParseData *pd, const InputLoc &loc, 
-		char *name, InlineList *inlineList )
+		const char *name, InlineList *inlineList )
 {
-	Action *action = new Action( loc, name, inlineList );
+	Action *action = new Action( loc, name, inlineList, pd->nextCondId++ );
 	action->actionRefs.append( pd->curNameInst );
 	pd->actionList.append( action );
 	action->isLmAction = true;
@@ -178,13 +179,15 @@ void LongestMatch::makeActions( ParseData *pd )
 		/* For each part create actions for setting the match type.  We need
 		 * to do this so that the actions will go into the actionIndex. */
 		InlineList *inlineList = new InlineList;
-		inlineList->append( new InlineItem( lmi->getLoc(), this, lmi, InlineItem::LmSetActId ) );
+		inlineList->append( new InlineItem( lmi->getLoc(), this, lmi, 
+				InlineItem::LmSetActId ) );
 		char *actName = new char[50];
 		sprintf( actName, "store%i", lmi->longestMatchId );
 		lmi->setActId = newAction( pd, lmi->getLoc(), actName, inlineList );
 	}
 
-	/* Make actions that execute the user action and restart on the last character. */
+	/* Make actions that execute the user action and restart on the last
+	 * character. */
 	for ( LmPartList::Iter lmi = *longestMatchList; lmi.lte(); lmi++ ) {
 		/* For each part create actions for setting the match type.  We need
 		 * to do this so that the actions will go into the actionIndex. */
@@ -192,7 +195,7 @@ void LongestMatch::makeActions( ParseData *pd )
 		inlineList->append( new InlineItem( lmi->getLoc(), this, lmi, 
 				InlineItem::LmOnLast ) );
 		char *actName = new char[50];
-		sprintf( actName, "imm%i", lmi->longestMatchId );
+		sprintf( actName, "last%i", lmi->longestMatchId );
 		lmi->actOnLast = newAction( pd, lmi->getLoc(), actName, inlineList );
 	}
 
@@ -206,7 +209,7 @@ void LongestMatch::makeActions( ParseData *pd )
 		inlineList->append( new InlineItem( lmi->getLoc(), this, lmi, 
 				InlineItem::LmOnNext ) );
 		char *actName = new char[50];
-		sprintf( actName, "lagh%i", lmi->longestMatchId );
+		sprintf( actName, "next%i", lmi->longestMatchId );
 		lmi->actOnNext = newAction( pd, lmi->getLoc(), actName, inlineList );
 	}
 
@@ -226,11 +229,12 @@ void LongestMatch::makeActions( ParseData *pd )
 	InputLoc loc;
 	loc.line = 1;
 	loc.col = 1;
+	loc.fileName = "NONE";
 
 	/* Create the error action. */
 	InlineList *il6 = new InlineList;
 	il6->append( new InlineItem( loc, this, 0, InlineItem::LmSwitch ) );
-	lmActSelect = newAction( pd, loc, "lagsel", il6 );
+	lmActSelect = newAction( pd, loc, "switch", il6 );
 }
 
 void LongestMatch::findName( ParseData *pd )
@@ -292,13 +296,13 @@ void LongestMatch::restart( FsmAp *graph, TransAp *trans )
 	graph->attachTrans( fromState, graph->startState, trans );
 }
 
-void LongestMatch::runLonestMatch( ParseData *pd, FsmAp *graph )
+void LongestMatch::runLongestMatch( ParseData *pd, FsmAp *graph )
 {
 	graph->markReachableFromHereStopFinal( graph->startState );
 	for ( StateList::Iter ms = graph->stateList; ms.lte(); ms++ ) {
-		if ( ms->stateBits & SB_ISMARKED ) {
+		if ( ms->stateBits & STB_ISMARKED ) {
 			ms->lmItemSet.insert( 0 );
-			ms->stateBits &= ~ SB_ISMARKED;
+			ms->stateBits &= ~ STB_ISMARKED;
 		}
 	}
 
@@ -313,16 +317,16 @@ void LongestMatch::runLonestMatch( ParseData *pd, FsmAp *graph )
 				StateAp *toState = trans->toState;
 				assert( toState );
 
-				/* Check if there are transitions out, this may be a very
-				 * close approximation? Out transitions going nowhere?
-				 * FIXME: Check. */
+				/* Can only optimize this if there are no transitions out.
+				 * Note there can be out transitions going nowhere with
+				 * actions and they too must inhibit this optimization. */
 				if ( toState->outList.length() > 0 ) {
 					/* Fill the item sets. */
 					graph->markReachableFromHereStopFinal( toState );
 					for ( StateList::Iter ms = graph->stateList; ms.lte(); ms++ ) {
-						if ( ms->stateBits & SB_ISMARKED ) {
+						if ( ms->stateBits & STB_ISMARKED ) {
 							ms->lmItemSet.insert( lmAct->value );
-							ms->stateBits &= ~ SB_ISMARKED;
+							ms->stateBits &= ~ STB_ISMARKED;
 						}
 					}
 				}
@@ -338,14 +342,15 @@ void LongestMatch::runLonestMatch( ParseData *pd, FsmAp *graph )
 	int maxItemSetLength = 0;
 	graph->markReachableFromHereStopFinal( graph->startState );
 	for ( StateList::Iter ms = graph->stateList; ms.lte(); ms++ ) {
-		if ( ms->stateBits & SB_ISMARKED ) {
+		if ( ms->stateBits & STB_ISMARKED ) {
 			if ( ms->lmItemSet.length() > maxItemSetLength )
 				maxItemSetLength = ms->lmItemSet.length();
-			ms->stateBits &= ~ SB_ISMARKED;
+			ms->stateBits &= ~ STB_ISMARKED;
 		}
 	}
 
 	/* The actions executed on starting to match a token. */
+	graph->isolateStartState();
 	graph->startState->toStateActionTable.setAction( pd->initTokStartOrd, pd->initTokStart );
 	graph->startState->fromStateActionTable.setAction( pd->setTokStartOrd, pd->setTokStart );
 	if ( maxItemSetLength > 1 ) {
@@ -373,12 +378,18 @@ void LongestMatch::runLonestMatch( ParseData *pd, FsmAp *graph )
 				StateAp *toState = trans->toState;
 				assert( toState );
 
-				/* Check if there are transitions out, this may be a very
-				 * close approximation? Out transitions going nowhere?
-				 * FIXME: Check. */
+				/* Can only optimize this if there are no transitions out.
+				 * Note there can be out transitions going nowhere with
+				 * actions and they too must inhibit this optimization. */
 				if ( toState->outList.length() == 0 ) {
 					/* Can execute the immediate action for the longest match
-					 * part. Redirect the action to the start state. */
+					 * part. Redirect the action to the start state.
+					 *
+					 * NOTE: When we need to inhibit on_last due to leaving
+					 * actions the above test suffices. If the state has out
+					 * actions then it will fail because the out action will
+					 * have been transferred to an error transition, which
+					 * makes the outlist non-empty. */
 					trans->actionTable.setAction( lmAct->key, 
 							lmAct->value->actOnLast );
 					restartTrans.append( trans );
@@ -393,12 +404,12 @@ void LongestMatch::runLonestMatch( ParseData *pd, FsmAp *graph )
 					maxItemSetLength = 0;
 					graph->markReachableFromHereStopFinal( toState );
 					for ( StateList::Iter ms = graph->stateList; ms.lte(); ms++ ) {
-						if ( ms->stateBits & SB_ISMARKED ) {
+						if ( ms->stateBits & STB_ISMARKED ) {
 							if ( ms->lmItemSet.length() > 0 && !ms->isFinState() )
 								nonFinalNonEmptyItemSet = true;
 							if ( ms->lmItemSet.length() > maxItemSetLength )
 								maxItemSetLength = ms->lmItemSet.length();
-							ms->stateBits &= ~ SB_ISMARKED;
+							ms->stateBits &= ~ STB_ISMARKED;
 						}
 					}
 
@@ -437,14 +448,20 @@ void LongestMatch::runLonestMatch( ParseData *pd, FsmAp *graph )
 				 * the last character of the token was one back and restart. */
 				graph->setErrorTarget( st, graph->startState, &lmErrActionOrd, 
 						&st->lmItemSet[0]->actOnNext, 1 );
+				st->eofActionTable.setAction( lmErrActionOrd, 
+						st->lmItemSet[0]->actOnNext );
+				st->eofTarget = graph->startState;
 			}
 			else {
 				graph->setErrorTarget( st, graph->startState, &lmErrActionOrd, 
 						&st->lmItemSet[0]->actLagBehind, 1 );
+				st->eofActionTable.setAction( lmErrActionOrd, 
+						st->lmItemSet[0]->actLagBehind );
+				st->eofTarget = graph->startState;
 			}
 		}
 		else if ( st->lmItemSet.length() > 1 ) {
-			/* Need to use the select. Take note of the which items the select
+			/* Need to use the select. Take note of which items the select
 			 * is needed for so only the necessary actions are included. */
 			for ( LmItemSet::Iter plmi = st->lmItemSet; plmi.lte(); plmi++ ) {
 				if ( *plmi != 0 )
@@ -453,11 +470,21 @@ void LongestMatch::runLonestMatch( ParseData *pd, FsmAp *graph )
 			/* On error, execute the action select and go to the start state. */
 			graph->setErrorTarget( st, graph->startState, &lmErrActionOrd, 
 					&lmActSelect, 1 );
+			st->eofActionTable.setAction( lmErrActionOrd, lmActSelect );
+			st->eofTarget = graph->startState;
 		}
 	}
 	
 	/* Finally, the start state should be made final. */
 	graph->setFinState( graph->startState );
+}
+
+void LongestMatch::transferScannerLeavingActions( FsmAp *graph )
+{
+	for ( StateList::Iter st = graph->stateList; st.lte(); st++ ) {
+		if ( st->outActionTable.length() > 0 )
+			graph->setErrorActions( st, st->outActionTable );
+	}
 }
 
 FsmAp *LongestMatch::walk( ParseData *pd )
@@ -474,6 +501,13 @@ FsmAp *LongestMatch::walk( ParseData *pd )
 		parts[i]->longMatchAction( pd->curActionOrd++, lmi );
 	}
 
+	/* Before we union the patterns we need to deal with leaving actions. They
+	 * are transfered to error transitions out of the final states (like local
+	 * error actions) and to eof actions. In the scanner we need to forbid
+	 * on_last for any final state that has an leaving action. */
+	for ( int i = 0; i < longestMatchList->length(); i++ )
+		transferScannerLeavingActions( parts[i] );
+
 	/* Union machines one and up with machine zero. The grammar dictates that
 	 * there will always be at least one part. */
 	FsmAp *rtnVal = parts[0];
@@ -482,7 +516,7 @@ FsmAp *LongestMatch::walk( ParseData *pd )
 		afterOpMinimize( rtnVal );
 	}
 
-	runLonestMatch( pd, rtnVal );
+	runLongestMatch( pd, rtnVal );
 
 	/* Pop the name scope. */
 	pd->popNameScope( nameFrame );
@@ -491,7 +525,7 @@ FsmAp *LongestMatch::walk( ParseData *pd )
 	return rtnVal;
 }
 
-FsmAp *JoinOrLm::walk( ParseData *pd )
+FsmAp *MachineDef::walk( ParseData *pd )
 {
 	FsmAp *rtnVal = 0;
 	switch ( type ) {
@@ -501,11 +535,16 @@ FsmAp *JoinOrLm::walk( ParseData *pd )
 	case LongestMatchType:
 		rtnVal = longestMatch->walk( pd );
 		break;
+	case LengthDefType:
+		condData->lastCondKey.increment();
+		rtnVal = new FsmAp();
+		rtnVal->concatFsm( condData->lastCondKey );
+		break;
 	}
 	return rtnVal;
 }
 
-void JoinOrLm::makeNameTree( ParseData *pd )
+void MachineDef::makeNameTree( ParseData *pd )
 {
 	switch ( type ) {
 	case JoinType:
@@ -514,10 +553,12 @@ void JoinOrLm::makeNameTree( ParseData *pd )
 	case LongestMatchType:
 		longestMatch->makeNameTree( pd );
 		break;
+	case LengthDefType:
+		break;
 	}
 }
 
-void JoinOrLm::resolveNameRefs( ParseData *pd )
+void MachineDef::resolveNameRefs( ParseData *pd )
 {
 	switch ( type ) {
 	case JoinType:
@@ -525,6 +566,8 @@ void JoinOrLm::resolveNameRefs( ParseData *pd )
 		break;
 	case LongestMatchType:
 		longestMatch->resolveNameRefs( pd );
+		break;
+	case LengthDefType:
 		break;
 	}
 }
@@ -638,7 +681,7 @@ void Join::resolveNameRefs( ParseData *pd )
 			pd->curNameInst->start = resolved[0];
 			if ( resolved.length() > 1 ) {
 				/* Complain about the multiple references. */
-				error(loc) << "multiple start labels" << endl;
+				error(loc) << "join operation has multiple start labels" << endl;
 				errorStateLabels( resolved );
 			}
 		}
@@ -649,9 +692,8 @@ void Join::resolveNameRefs( ParseData *pd )
 			pd->curNameInst->start->numRefs += 1;
 		}
 		else {
-			/* No start label. Complain and recover by adding a label to the
-			 * adding one. Recover ignoring the problem. */
-			error(loc) << "no start label" << endl;
+			/* No start label. */
+			error(loc) << "join operation has no start label" << endl;
 		}
 
 		/* Recurse into all expressions in the list. */
@@ -831,8 +873,8 @@ FsmAp *Term::walk( ParseData *pd, bool lastInSeq )
 			priorDescs[0].priority = 0;
 			rtnVal->allTransPrior( pd->curPriorOrd++, &priorDescs[0] );
 
-			/* The start transitions right machine get the higher priority.
-			 * Use the same unique key. */
+			/* The start transitions of the right machine gets the higher
+			 * priority. Use the same unique key. */
 			priorDescs[1].key = priorDescs[0].key;
 			priorDescs[1].priority = 1;
 			rhs->startFsmPrior( pd->curPriorOrd++, &priorDescs[1] );
@@ -862,6 +904,14 @@ FsmAp *Term::walk( ParseData *pd, bool lastInSeq )
 			priorDescs[1].priority = 1;
 			rhs->finishFsmPrior( pd->curPriorOrd++, &priorDescs[1] );
 
+			/* If the right machine's start state is final we need to guard
+			 * against the left machine persisting by moving through the empty
+			 * string. */
+			if ( rhs->startState->isFinState() ) {
+				rhs->startState->outPriorTable.setPrior( 
+						pd->curPriorOrd++, &priorDescs[1] );
+			}
+
 			/* Perform concatenation. */
 			rtnVal->concatOp( rhs );
 			afterOpMinimize( rtnVal, lastInSeq );
@@ -880,14 +930,14 @@ FsmAp *Term::walk( ParseData *pd, bool lastInSeq )
 			priorDescs[0].priority = 1;
 			rtnVal->allTransPrior( pd->curPriorOrd++, &priorDescs[0] );
 
-			/* The right machine gets the lower priority.  Since
-			 * startTransPrior might unnecessarily increase the number of
-			 * states during the state machine construction process (due to
-			 * isolation), we use allTransPrior instead, which has the same
-			 * effect. */
+			/* The right machine gets the lower priority. We cannot use
+			 * allTransPrior here in case the start state of the right machine
+			 * is final. It would allow the right machine thread to run along
+			 * with the left if just passing through the start state. Using
+			 * startFsmPrior prevents this. */
 			priorDescs[1].key = priorDescs[0].key;
 			priorDescs[1].priority = 0;
-			rhs->allTransPrior( pd->curPriorOrd++, &priorDescs[1] );
+			rhs->startFsmPrior( pd->curPriorOrd++, &priorDescs[1] );
 
 			/* Perform concatenation. */
 			rtnVal->concatOp( rhs );
@@ -1119,14 +1169,14 @@ void FactorWithAug::assignConditions( FsmAp *graph )
 		switch ( conditions[i].type ) {
 		/* Transition actions. */
 		case at_start:
-			graph->startFsmCondition( conditions[i].action );
+			graph->startFsmCondition( conditions[i].action, conditions[i].sense );
 			afterOpMinimize( graph );
 			break;
 		case at_all:
-			graph->allTransCondition( conditions[i].action );
+			graph->allTransCondition( conditions[i].action, conditions[i].sense );
 			break;
 		case at_leave:
-			graph->leaveFsmCondition( conditions[i].action );
+			graph->leaveFsmCondition( conditions[i].action, conditions[i].sense );
 			break;
 		default:
 			break;
@@ -1172,8 +1222,10 @@ FsmAp *FactorWithAug::walk( ParseData *pd )
 			actionOrd[i] = pd->curActionOrd++;
 	}
 
+	/* Embed conditions. */
 	assignConditions( rtnVal );
 
+	/* Embed actions. */
 	assignActions( pd, rtnVal , actionOrd );
 
 	/* Make the array of priority orderings. Orderings are local to this walk
@@ -1344,6 +1396,7 @@ FsmAp *FactorWithRep::walk( ParseData *pd )
 		if ( retFsm->startState->isFinState() ) {
 			warning(loc) << "applying kleene star to a machine that "
 					"accepts zero length word" << endl;
+			retFsm->unsetFinState( retFsm->startState );
 		}
 
 		/* Shift over the start action orders then do the kleene star. */
@@ -1396,7 +1449,7 @@ FsmAp *FactorWithRep::walk( ParseData *pd )
 		retFsm = factorWithRep->walk( pd );
 		if ( retFsm->startState->isFinState() ) {
 			warning(loc) << "applying plus operator to a machine that "
-					"accpets zero length word" << endl;
+					"accepts zero length word" << endl;
 		}
 
 		/* Need a duplicated for the star end. */
@@ -1700,7 +1753,7 @@ Factor::~Factor()
 			delete reItem;
 			break;
 		case RegExprType:
-			delete regExp;
+			delete regExpr;
 			break;
 		case ReferenceType:
 			break;
@@ -1728,7 +1781,7 @@ FsmAp *Factor::walk( ParseData *pd )
 		rtnVal = reItem->walk( pd, 0 );
 		break;
 	case RegExprType:
-		rtnVal = regExp->walk( pd, 0 );
+		rtnVal = regExpr->walk( pd, 0 );
 		break;
 	case ReferenceType:
 		rtnVal = varDef->walk( pd );
@@ -1791,43 +1844,19 @@ Range::~Range()
 	delete upperLit;
 }
 
-bool Range::verifyRangeFsm( FsmAp *rangeEnd )
-{
-	/* Must have two states. */
-	if ( rangeEnd->stateList.length() != 2 )
-		return false;
-	/* The start state cannot be final. */
-	if ( rangeEnd->startState->isFinState() )
-		return false;
-	/* There should be only one final state. */
-	if ( rangeEnd->finStateSet.length() != 1 )
-		return false;
-	/* The final state cannot have any transitions out. */
-	if ( rangeEnd->finStateSet[0]->outList.length() != 0 )
-		return false;
-	/* The start state should have only one transition out. */
-	if ( rangeEnd->startState->outList.length() != 1 )
-		return false;
-	/* The singe transition out of the start state should not be a range. */
-	TransAp *startTrans = rangeEnd->startState->outList.head;
-	if ( startTrans->lowKey != startTrans->highKey )
-		return false;
-	return true;
-}
-
 /* Evaluate a range. Gets the lower an upper key and makes an fsm range. */
 FsmAp *Range::walk( ParseData *pd )
 {
 	/* Construct and verify the suitability of the lower end of the range. */
 	FsmAp *lowerFsm = lowerLit->walk( pd );
-	if ( !verifyRangeFsm( lowerFsm ) ) {
+	if ( !lowerFsm->checkSingleCharMachine() ) {
 		error(lowerLit->token.loc) << 
 			"bad range lower end, must be a single character" << endl;
 	}
 
 	/* Construct and verify the upper end. */
 	FsmAp *upperFsm = upperLit->walk( pd );
-	if ( !verifyRangeFsm( upperFsm ) ) {
+	if ( !upperFsm->checkSingleCharMachine() ) {
 		error(upperLit->token.loc) << 
 			"bad range upper end, must be a single character" << endl;
 	}
@@ -1868,19 +1897,20 @@ FsmAp *Literal::walk( ParseData *pd )
 	}
 	case LitString: {
 		/* Make the array of keys in int format. */
-		Token interp;
+		long length;
 		bool caseInsensitive;
-		token.prepareLitString( interp, caseInsensitive );
-		Key *arr = new Key[interp.length];
-		makeFsmKeyArray( arr, interp.data, interp.length, pd );
+		char *data = prepareLitString( token.loc, token.data, token.length, 
+				length, caseInsensitive );
+		Key *arr = new Key[length];
+		makeFsmKeyArray( arr, data, length, pd );
 
 		/* Make the new machine. */
 		rtnVal = new FsmAp();
 		if ( caseInsensitive )
-			rtnVal->concatFsmCI( arr, interp.length );
+			rtnVal->concatFsmCI( arr, length );
 		else
-			rtnVal->concatFsm( arr, interp.length );
-		delete[] interp.data;
+			rtnVal->concatFsm( arr, length );
+		delete[] data;
 		delete[] arr;
 		break;
 	}}
@@ -1892,7 +1922,7 @@ RegExpr::~RegExpr()
 {
 	switch ( type ) {
 		case RecurseItem:
-			delete regExp;
+			delete regExpr;
 			delete item;
 			break;
 		case Empty:
@@ -1911,18 +1941,14 @@ FsmAp *RegExpr::walk( ParseData *pd, RegExpr *rootRegex )
 	switch ( type ) {
 		case RecurseItem: {
 			/* Walk both items. */
-			FsmAp *fsm1 = regExp->walk( pd, rootRegex );
+			rtnVal = regExpr->walk( pd, rootRegex );
 			FsmAp *fsm2 = item->walk( pd, rootRegex );
-			if ( fsm1 == 0 )
-				rtnVal = fsm2;
-			else {
-				fsm1->concatOp( fsm2 );
-				rtnVal = fsm1;
-			}
+			rtnVal->concatOp( fsm2 );
 			break;
 		}
 		case Empty: {
-			rtnVal = 0;
+			rtnVal = new FsmAp();
+			rtnVal->lambdaFsm();
 			break;
 		}
 	}
@@ -1972,6 +1998,10 @@ FsmAp *ReItem::walk( ParseData *pd, RegExpr *rootRegex )
 		case OrBlock: {
 			/* Get the or block and minmize it. */
 			rtnVal = orBlock->walk( pd, rootRegex );
+			if ( rtnVal == 0 ) {
+				rtnVal = new FsmAp();
+				rtnVal->lambdaFsm();
+			}
 			rtnVal->minimizePartition2();
 			break;
 		}
@@ -1992,7 +2022,7 @@ FsmAp *ReItem::walk( ParseData *pd, RegExpr *rootRegex )
 	if ( star ) {
 		if ( rtnVal->startState->isFinState() ) {
 			warning(loc) << "applying kleene star to a machine that "
-					"accpets zero length word" << endl;
+					"accepts zero length word" << endl;
 		}
 
 		rtnVal->starOp();

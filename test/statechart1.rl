@@ -16,7 +16,7 @@ struct state_chart
 
 %%{
 	machine state_chart;
-	variable curstate fsm->cs;
+	variable cs fsm->cs;
 
 	action a { printf("a"); }
 	action b { printf("b"); }
@@ -67,8 +67,6 @@ void state_chart_execute( struct state_chart *fsm, const char *_data, int _len )
 
 int state_chart_finish( struct state_chart *fsm )
 {
-	%% write eof;
-
 	if ( fsm->cs == state_chart_error )
 		return -1;
 	if ( fsm->cs >= state_chart_first_final )

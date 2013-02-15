@@ -15,8 +15,10 @@ end compounds
 
 keys
 	'int 'bool 'true 'false 'char 'ptr
-	'if 'else 'printi 'prints 
+	'if 'else 'printi 'prints 'printb 'print_token
 	'fc 'fpc 'fbreak 'fgoto 'fcall 'fret 'fhold 'fexec
+	'machine 'alphtype 'action
+	'first_token_char
 end keys
 
 define lang_indep
@@ -38,6 +40,7 @@ end define
 
 define statement
 		[machine_stmt]
+	|	[alphtype_stmt]
 	|	[action_stmt]
 	|	[cond_action_stmt]
 	|	[machine_def]
@@ -46,6 +49,10 @@ end define
 
 define machine_stmt
 		'machine [id] '; [NL]
+end define
+
+define alphtype_stmt
+		'alphtype [repeat id] '; [NL]
 end define
 
 define action_stmt
@@ -71,10 +78,11 @@ end define
 
 define al_print_stmt
 		[print_cmd] [al_expr] '; [NL]
+	|	'print_token '; [NL]
 end define
 
 define print_cmd
-		'printi | 'prints
+		'printi | 'prints | 'printb
 end define
 
 define al_variable_decl
@@ -102,18 +110,24 @@ define al_expr_extend
 end define
 
 define al_expr_op
-		'= | '+ | '- | '* | '/ | '== | '<= | '>=
+		'= | '+ | '- | '* | '/ | '== | '<= | '>= | '< | '>
 end define
 
 define al_term
+		[al_term_base] [opt union]
+end define
+
+define al_term_base
 		[id]
+	|	[SPOFF] [id] '( [SPON] [al_expr] ')
 	|	[opt al_sign] [number]
-	|	[stringlit]
-	|	[charlit]
+	|	[stringlit] 
+	|	[charlit] 
 	|	'fc
 	|	'true
 	|	'false
 	|	'( [al_expr] ')
+	|	'first_token_char
 end define
 
 define al_sign

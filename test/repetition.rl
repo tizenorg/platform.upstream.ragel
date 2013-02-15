@@ -7,6 +7,7 @@
 #include <iostream>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 using namespace std;
 
@@ -62,7 +63,6 @@ int Rep::execute( const char *_data, int _len )
 
 int Rep::finish( )
 {
-	%% write eof;
 	if ( cs == Rep_error )
 		return -1;
 	if ( cs >= Rep_first_final )
@@ -70,7 +70,7 @@ int Rep::finish( )
 	return 0;
 }
 
-void test( char *buf )
+void test( const char *buf )
 {
 	Rep rep;
 	int len = strlen( buf );

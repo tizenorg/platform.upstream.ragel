@@ -27,7 +27,7 @@ struct awkemu
 %%{
 	machine awkemu;
 
-	variable curstate fsm->cs;
+	variable cs fsm->cs;
 
 	# Starts a line. Will initialize all the data necessary for capturing the line.
 	action startline {
@@ -113,8 +113,6 @@ void awkemu_execute( struct awkemu *fsm, const char *_data, int _len )
 
 int awkemu_finish( struct awkemu *fsm )
 {
-	%% write eof;
-
 	if ( fsm->cs == awkemu_error ) 
 		return -1;
 	if ( fsm->cs >= awkemu_first_final ) 

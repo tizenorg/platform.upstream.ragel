@@ -14,7 +14,8 @@ syntax region ocComment start="\/\*" end="\*\/"
 syntax match ocComment "\/\/.*$"
 
 " Anything preprocessor
-syntax match ocPreproc "#.*$"
+syntax match ocPreproc "#\(.\|\\\n\)*$"
+syntax region ocPreproc start="#" end="[^\\]$"
 
 " Strings
 syntax match ocLiteral "'\(\\.\|[^'\\]\)*'"
@@ -31,23 +32,6 @@ syntax keyword ocKeyword new delete this using friend public private protected s
 syntax keyword ocKeyword throw try catch operator typeid
 syntax keyword ocKeyword and bitor xor compl bitand and_eq or_eq xor_eq not not_eq
 syntax keyword ocKeyword static_cast dynamic_cast
-
-" D Keywords
-syntax keyword ocType wchar dchar bit byte ubyte ushort uint ulong cent ucent 
-syntax keyword ocType cfloat ifloat cdouble idouble real creal ireal
-syntax keyword ocKeyword abstract alias align asm assert body cast debug delegate
-syntax keyword ocKeyword deprecated export final finally foreach function import in inout 
-syntax keyword ocKeyword interface invariant is mixin module out override package pragma
-syntax keyword ocKeyword super synchronized typeof unittest version with
-
-" Java Keywords
-syntax keyword ocType byte short char int
-
-" Objective-C Directives
-syntax match ocKeyword "@public\|@private\|@protected"
-syntax match ocKeyword "@interface\|@implementation"
-syntax match ocKeyword "@class\|@end\|@defs"
-syntax match ocKeyword "@encode\|@protocol\|@selector"
 
 " Numbers
 syntax match ocNumber "[0-9][0-9]*"
@@ -96,8 +80,10 @@ syntax match rlOtherOps ":>>" contained
 syntax match rlOtherOps "<:" contained
 
 " Keywords
-syntax keyword rlKeywords machine action context include range contained
-syntax keyword rlExprKeywords when err lerr eof from to contained
+" FIXME: Enable the range keyword post 5.17.
+" syntax keyword rlKeywords machine action context include range contained
+syntax keyword rlKeywords machine action context include import export prepush postpop contained
+syntax keyword rlExprKeywords when inwhen outwhen err lerr eof from to contained
 
 " Case Labels
 syntax keyword caseLabelKeyword case contained
@@ -122,17 +108,19 @@ syntax cluster inlineItems contains=rlCodeCurly,ocComment,ocPreproc,ocLiteral,oc
 syntax region rlCodeCurly matchgroup=NONE start="{" end="}" contained contains=@inlineItems
 syntax region rlCodeSemi matchgroup=Type start="\<alphtype\>" start="\<getkey\>" start="\<access\>" start="\<variable\>" matchgroup=NONE end=";" contained contains=@inlineItems
 
-syntax region rlWrite matchgroup=Type start="\<write\>" matchgroup=NONE end=";" contained contains=rlWriteKeywords,rlWriteOptions
+syntax region rlWrite matchgroup=Type start="\<write\>" matchgroup=NONE end="[;)]" contained contains=rlWriteKeywords,rlWriteOptions
 
-syntax keyword rlWriteKeywords init data exec eof contained
-syntax keyword rlWriteOptions noerror nofinal noprefix noend contained
+syntax keyword rlWriteKeywords init data exec exports start error first_final contained
+syntax keyword rlWriteOptions noerror nofinal noprefix noend nocs contained
 
 "
 " Sync at the start of machine specs.
 "
-syntax sync match ragelSyncPat grouphere NONE "%%{&"
-syntax sync match ragelSyncPat grouphere NONE "%%[^{]&"
-syntax sync match ragelSyncPat grouphere NONE "}%%"
+" Match The ragel delimiters only if there quotes no ahead on the same line.
+" On the open marker, use & to consume the leader.
+syntax sync match ragelSyncPat grouphere NONE "^[^\'\"%]*%%{&^[^\'\"%]*"
+syntax sync match ragelSyncPat grouphere NONE "^[^\'\"%]*%%[^{]&^[^\'\"%]*"
+syntax sync match ragelSyncPat grouphere NONE "^[^\'\"]*}%%"
 
 "
 " Specifying Groups

@@ -8,7 +8,7 @@ using namespace std;
 struct LangEl
 {
 	int key;
-	char *name;
+	const char *name;
 };
 
 struct Fsm
@@ -39,6 +39,7 @@ struct Fsm
 
 	alphtype int;
 	getkey fpc->key;
+	variable eof eof_marker;
 
 	action a1 {}
 	action a2 {}
@@ -57,10 +58,11 @@ int Fsm::init( )
 	return 0;
 }
 
-int Fsm::execute( LangEl *_data, int _len )
+int Fsm::execute( LangEl *data, int len )
 {
-	LangEl *p = _data;
-	LangEl *pe = _data+_len;
+	LangEl *p = data;
+	LangEl *pe = data + len;
+	LangEl *eof_marker = pe;
 	%% write exec;
 
 	if ( cs == Fsm_error )
@@ -72,8 +74,6 @@ int Fsm::execute( LangEl *_data, int _len )
 
 int Fsm::finish( )
 {
-	%% write eof;
-
 	if ( cs == Fsm_error )
 		return -1;
 	if ( cs >= Fsm_first_final )

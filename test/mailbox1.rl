@@ -1,7 +1,8 @@
 /*
  * @LANG: c++
  * @CFLAGS: -I../aapl
- * @ALLOW_GENFLAGS: -T0 -T1 -F0 -F1 -G0 -G1 -G2 -P
+ *
+ * Test works with split code gen.
  */
 
 /*
@@ -98,11 +99,11 @@ void MBox::init( )
 	%% write init;
 }
 
-void MBox::execute( char *data, int len )
+void MBox::execute( const char *data, int len )
 {
 	MBox *fsm = this;
-	char *p = data;
-	char *pe = data + len;
+	const char *p = data;
+	const char *pe = data + len;
 	%%{
 		access fsm->;
 		write exec;
@@ -120,7 +121,7 @@ int MBox::finish( )
 
 MBox mbox;
 
-void test( char *buf )
+void test( const char *buf )
 {
 	int len = strlen( buf );
 	mbox.init();

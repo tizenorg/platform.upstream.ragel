@@ -65,6 +65,7 @@ int ErrAct::execute( const char *_data, int _len )
 {
 	const char *p = _data;
 	const char *pe = _data+_len;
+	const char *eof = pe;
 	%% write exec;
 
 	if ( cs == ErrAct_error )
@@ -76,7 +77,6 @@ int ErrAct::execute( const char *_data, int _len )
 
 int ErrAct::finish( )
 {
-	%% write eof;
 	if ( cs == ErrAct_error )
 		return -1;
 	if ( cs >= ErrAct_first_final )
@@ -86,7 +86,7 @@ int ErrAct::finish( )
 
 #define BUFSIZE 1024
 
-void test( char *buf )
+void test( const char *buf )
 {
 	ErrAct errAct;
 	errAct.init();

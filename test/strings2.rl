@@ -1,7 +1,9 @@
 /*
  * @LANG: c
- * @ALLOW_GENFLAGS: -T0 -T1 -F0 -F1 -P
+ * @ALLOW_GENFLAGS: -T0 -T1 -F0 -F1
  * @ALLOW_MINFLAGS: -n -m -l
+ *
+ * Test works with split code gen.
  */
 
 #include <string.h>
@@ -11,7 +13,7 @@
 
 %%{
 	machine strs;
-	variable curstate fsm->cs;
+	variable cs fsm->cs;
 
 	main := 
 		"/lib/ld-linux.so.2\n" |
@@ -1316,8 +1318,6 @@ void test( char *buf )
 
 	%% write init;
 	%% write exec;
-
-	%% write eof;
 
 	if ( fsm->cs >= strs_first_final )
 		printf("ACCEPT\n");

@@ -11,8 +11,8 @@ struct range
 };
 
 %%{
-	machine range_fsm;
-	variable curstate fsm->cs;
+	machine range;
+	variable cs fsm->cs;
 
 	main := ( 'a' .. 'c' | 'c' .. 'e' | 'm' .. 'n' | 'a' .. 'z' ) '\n';
 }%%
@@ -34,11 +34,9 @@ void range_execute( struct range *fsm, const char *_data, int _len )
 
 int range_finish( struct range *fsm )
 {
-	%% write eof;
-
-	if ( fsm->cs == range_fsm_error )
+	if ( fsm->cs == range_error )
 		return -1;
-	if ( fsm->cs >= range_fsm_first_final )
+	if ( fsm->cs >= range_first_final )
 		return 1;
 	return 0;
 }

@@ -1,5 +1,5 @@
 /*
- *  Copyright 2002-2004 Adrian Thurston <thurston@cs.queensu.ca>
+ *  Copyright 2002-2004 Adrian Thurston <thurston@complang.org>
  */
 
 /*  This file is part of Ragel.
@@ -122,6 +122,12 @@ void FsmAp::startFsmPrior( int ordering, PriorDesc *prior )
 		if ( trans->toState != 0 )
 			trans->priorTable.setPrior( ordering, prior );
 	}
+
+	/* If the new start state is final then set the out priority. This follows
+	 * the same convention as setting start action in the out action table of
+	 * a final start state. */
+	if ( startState->stateBits & STB_ISFINAL )
+		startState->outPriorTable.setPrior( ordering, prior );
 }
 
 /* Set the priority of all transitions in a graph. Walks all transition lists
@@ -180,6 +186,12 @@ void FsmAp::startFsmAction( int ordering, Action *action )
 		if ( trans->toState != 0 )
 			trans->actionTable.setAction( ordering, action );
 	}
+
+	/* If start state is final then add the action to the out action table.
+	 * This means that when the null string is accepted the start action will
+	 * not be bypassed. */
+	if ( startState->stateBits & STB_ISFINAL )
+		startState->outActionTable.setAction( ordering, action );
 }
 
 /* Set functions to execute on all transitions. Walks the out lists of all
@@ -290,6 +302,18 @@ void FsmAp::fillGaps( StateAp *state )
 	}
 }
 
+void FsmAp::setErrorActions( StateAp *state, const ActionTable &other )
+{
+	/* Fill any gaps in the out list with an error transition. */
+	fillGaps( state );
+
+	/* Set error transitions in the transitions that go to error. */
+	for ( TransList::Iter trans = state->outList; trans.lte(); trans++ ) {
+		if ( trans->toState == 0 )
+			trans->actionTable.setActions( other );
+	}
+}
+
 void FsmAp::setErrorAction( StateAp *state, int ordering, Action *action )
 {
 	/* Fill any gaps in the out list with an error transition. */
@@ -320,6 +344,13 @@ void FsmAp::setErrorTarget( StateAp *state, StateAp *target, int *orderings,
 	}
 }
 
+void FsmAp::transferOutActions( StateAp *state )
+{
+	for ( ActionTable::Iter act = state->outActionTable; act.lte(); act++ )
+		state->eofActionTable.setAction( act->key, act->value ); 
+	state->outActionTable.empty();
+}
+
 void FsmAp::transferErrorActions( StateAp *state, int transferPoint )
 {
 	for ( int i = 0; i < state->errActionTable.length(); ) {
@@ -327,6 +358,8 @@ void FsmAp::transferErrorActions( StateAp *state, int transferPoint )
 		if ( act->transferPoint == transferPoint ) {
 			/* Transfer the error action and remove it. */
 			setErrorAction( state, act->ordering, act->action );
+			if ( ! state->isFinState() )
+				state->eofActionTable.setAction( act->ordering, act->action );
 			state->errActionTable.vremove( i );
 		}
 		else {
@@ -637,14 +670,14 @@ void FsmAp::verifyStates()
 {
 	for ( StateList::Iter state = stateList; state.lte(); state++ ) {
 		/* Non final states should not have leaving data. */
-		if ( ! (state->stateBits & SB_ISFINAL) ) {
+		if ( ! (state->stateBits & STB_ISFINAL) ) {
 			assert( state->outActionTable.length() == 0 );
 			assert( state->outCondSet.length() == 0 );
 			assert( state->outPriorTable.length() == 0 );
 		}
 
 		/* Data used in algorithms should be cleared. */
-		assert( (state->stateBits & SB_BOTH) == 0 );
+		assert( (state->stateBits & STB_BOTH) == 0 );
 		assert( state->foreignInTrans > 0 );
 	}
 }
@@ -756,7 +789,7 @@ int FsmAp::compareStateData( const StateAp *state1, const StateAp *state2 )
 		return cmpRes;
 
 	/* Test out condition sets. */
-	cmpRes = CmpActionSet::compare( state1->outCondSet, 
+	cmpRes = CmpOutCondSet::compare( state1->outCondSet, 
 			state2->outCondSet );
 	if ( cmpRes != 0 )
 		return cmpRes;
@@ -802,8 +835,15 @@ CondSpace *FsmAp::addCondSpace( const CondSet &condSet )
 {
 	CondSpace *condSpace = condData->condSpaceMap.find( condSet );
 	if ( condSpace == 0 ) {
-		Key baseKey = condData->nextCondKey;
-		condData->nextCondKey += (1 << condSet.length() ) * keyOps->alphSize();
+		/* Do we have enough keyspace left? */
+		Size availableSpace = condData->lastCondKey.availableSpace();
+		Size neededSpace = (1 << condSet.length() ) * keyOps->alphSize();
+		if ( neededSpace > availableSpace )
+			throw FsmConstructFail( FsmConstructFail::CondNoKeySpace );
+
+		Key baseKey = condData->lastCondKey;
+		baseKey.increment();
+		condData->lastCondKey += (1 << condSet.length() ) * keyOps->alphSize();
 
 		condSpace = new CondSpace( condSet );
 		condSpace->baseKey = baseKey;
@@ -820,21 +860,21 @@ CondSpace *FsmAp::addCondSpace( const CondSet &condSet )
 	return condSpace;
 }
 
-void FsmAp::startFsmCondition( Action *condAction )
+void FsmAp::startFsmCondition( Action *condAction, bool sense )
 {
 	/* Make sure the start state has no other entry points. */
 	isolateStartState();
-	embedCondition( startState, condAction );
+	embedCondition( startState, condAction, sense );
 }
 
-void FsmAp::allTransCondition( Action *condAction )
+void FsmAp::allTransCondition( Action *condAction, bool sense )
 {
 	for ( StateList::Iter state = stateList; state.lte(); state++ )
-		embedCondition( state, condAction );
+		embedCondition( state, condAction, sense );
 }
 
-void FsmAp::leaveFsmCondition( Action *condAction )
+void FsmAp::leaveFsmCondition( Action *condAction, bool sense )
 {
 	for ( StateSet::Iter state = finStateSet; state.lte(); state++ )
-		(*state)->outCondSet.insert( condAction );
+		(*state)->outCondSet.insert( OutCond( condAction, sense ) );
 }

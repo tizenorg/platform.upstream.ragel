@@ -6,6 +6,7 @@
 #include <iostream>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 
 using namespace std;
 
@@ -100,13 +101,13 @@ void Concurrent::execute( const char *data, int len )
 {
 	const char *p = data;
 	const char *pe = data + len;
+	const char *eof = pe;
 
 	%% write exec;
 }
 
 int Concurrent::finish( )
 {
-	%% write eof;
 	if ( cs == Concurrent_error )
 		return -1;
 	if ( cs >= Concurrent_first_final )
@@ -114,7 +115,7 @@ int Concurrent::finish( )
 	return 0;
 }
 
-void test( char *buf )
+void test( const char *buf )
 {
 	Concurrent concurrent;
 	concurrent.init();

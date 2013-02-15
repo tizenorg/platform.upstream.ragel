@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001 Adrian Thurston <thurston@cs.queensu.ca>
+ *  Copyright 2001 Adrian Thurston <thurston@complang.org>
  */
 
 /*  This file is part of Aapl.
@@ -598,7 +598,9 @@ template <AVLMEL_TEMPDEF> void AvlTree<AVLMEL_TEMPUSE>::
 	root = other.root;
 
 #ifdef WALKABLE
-	BASELIST::shallowCopy( other );
+	BASELIST::head = other.BASELIST::head;
+	BASELIST::tail = other.BASELIST::tail;
+	BASELIST::listLen = other.BASELIST::listLen;
 #else
 	head = other.head;
 	tail = other.tail;
@@ -636,7 +638,9 @@ template <AVLMEL_TEMPDEF> void AvlTree<AVLMEL_TEMPUSE>::
 	root = other.root;
 
 #ifdef WALKABLE
-	BASELIST::shallowCopy( other );
+	BASELIST::head = other.BASELIST::head;
+	BASELIST::tail = other.BASELIST::tail;
+	BASELIST::listLen = other.BASELIST::listLen;
 #else
 	head = other.head;
 	tail = other.tail;

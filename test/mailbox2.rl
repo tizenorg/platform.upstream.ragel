@@ -121,14 +121,14 @@ using std::endl;
 
 #define BUFSIZE 8192
 
-void test( char *buf )
+void test( const char *buf )
 {
 	int cs, len = strlen( buf );
-	char *preserve = 0, *ws = 0;
+	const char *preserve = 0, *ws = 0;
 
 	%% write init;
-	char *p = buf;
-	char *pe = p + len;
+	const char *p = buf;
+	const char *pe = p + len;
 	%% write exec;
 
 	if ( cs == mailbox_error )
@@ -142,7 +142,7 @@ int main()
 {
 	test(
 		"From user@host.com Wed Nov 28 13:30:05 2001\n"
-		"From: \"Adrian D. Thurston\" <thurston@cs.queensu.ca>\n"
+		"From: \"Adrian D. Thurston\" <thurston@complang.org>\n"
 		"Subject:   the squirrel has landed\n"
 		"\n"
 		"Message goes here. \n"
@@ -162,7 +162,7 @@ int main()
 #ifdef _____OUTPUT_____
 ------
 FROM
-	"Adrian D. Thurston" | thurston@cs.queensu.ca
+	"Adrian D. Thurston" | thurston@complang.org
 SUBJECT
 	the squirrel has landed
 ------
