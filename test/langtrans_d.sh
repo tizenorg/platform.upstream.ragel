@@ -16,6 +16,12 @@ cat << EOF
 /*
  * @LANG: d
  * @GENERATED: yes
+EOF
+
+grep '@ALLOW_GENFLAGS:' $file
+grep '@ALLOW_MINFLAGS:' $file
+
+cat << EOF
  */
 import std.stdio;
 import std.string;
@@ -38,22 +44,24 @@ cat << EOF
 	{
 EOF
 
-sed -n '1,/^%%$/d; /^%%{$/q; {s/^/\t\t/;p}' $file.pr
+sed -n '0,/^%%$/d; /^%%{$/q; {s/^/\t\t/;p}' $file.pr
 
 cat << EOF
 		%% write init;
 	}
 
-	void exec( char *data, int len )
+	void exec( char data[] )
 	{
-		char *p = data;
-		char *pe = data + len;
+		char *p = data.ptr;
+		char *pe = data.ptr + data.length;
+		char *eof = pe;
+		char _s[];
+
 		%% write exec;
 	}
 
 	void finish( )
 	{
-		%% write eof;
 		if ( cs >= ${machine}_first_final )
 			writefln( "ACCEPT" );
 		else
@@ -63,7 +71,7 @@ cat << EOF
 EOF
 
 # Write out the test data.
-sed -n '1,/\/\* _____INPUT_____/d; /_____INPUT_____ \*\//q; p;' $file | awk '
+sed -n '0,/\/\* _____INPUT_____/d; /_____INPUT_____ \*\//q; p;' $file | awk '
 BEGIN {
 	print "	char[][] inp = ["
 }
@@ -86,7 +94,7 @@ int main( )
 	int i;
 	for ( i = 0; i < m.inplen; i++ ) {
 		m.init();
-		m.exec( m.inp[i], m.inp[i].length );
+		m.exec( m.inp[i] );
 		m.finish();
 	}
 	return 0;
@@ -95,7 +103,7 @@ int main( )
 EOF
 
 # Write out the expected output.
-sed -n '1,/\/\* _____OUTPUT_____/d; /_____OUTPUT_____ \*\//q; p;' $file
+sed -n '0,/\/\* _____OUTPUT_____/d; /_____OUTPUT_____ \*\//q; p;' $file
 echo "*/"
 
 # Don't need this language-specific file anymore.

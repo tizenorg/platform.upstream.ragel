@@ -1,5 +1,5 @@
 .\"
-.\"   Copyright 2001-2005 Adrian Thurston <thurston@cs.queensu.ca>
+.\"   Copyright 2001-2007 Adrian Thurston <thurston@complang.org>
 .\"
 
 .\"   This file is part of Ragel.
@@ -29,12 +29,8 @@ ragel \- compile regular languages into executable state machines
 .RI [ options ]
 .I file
 .SH DESCRIPTION
-.B Note:
-this is the frontend component of Ragel, which generates an intermediate
-file format that must be processed by rlcodegen(1).
-
-Ragel compiles finite state machines from regular languages into executable
-code.  Ragel can generate C, C++, Objective-C, D, or Java code. Ragel state
+Ragel compiles executable finite state machines from regular languages.  
+Ragel can generate C, C++, Objective-C, D, or Java code. Ragel state
 machines can not only recognize byte
 sequences as regular expression machines do, but can also execute code at
 arbitrary points in the recognition of a regular language.  User code is
@@ -59,11 +55,30 @@ into the application. The generated code has no dependencies.
 .BR \-h ", " \-H ", " \-? ", " \-\-help
 Display help and exit.
 .TP
+.B \-v
+Print version information and exit.
+.TP
 .B \-o " file"
 Write output to file. If -o is not given, a default file name is chosen by
-replacing the suffix of the input. For source files ending in .rh the suffix .h
-is used. For all other source files a suffix based on the output language
-is used (.c, .cpp, .m, .dot)
+replacing the file extenstion of the input file. For source files ending in .rh
+the suffix .h is used. For all other source files a suffix based on the output
+language is used (.c, .cpp, .m, etc.). If -o is not given for Graphviz output
+the generated dot file is written to standard output.
+.TP
+.B \-s
+Print some statistics on standard error.
+.TP
+.B \--error-format=gnu
+Print error messages using the format "file:line:column:" (default)
+.TP
+.B \--error-format=msvc
+Print error messages using the format "file(line,column):"
+.TP
+.B \-d
+Do not remove duplicate actions from action lists.
+.TP
+.B \-I " dir"
+Add dir to the list of directories to search for included and imported files
 .TP
 .B \-n
 Do not perform state minimization.
@@ -78,11 +93,21 @@ are minimized once at the end. This is the default minimization option.
 .B \-e
 Minimize after every operation.
 .TP
+.B \-x
+Compile the state machines and emit an XML representation of the host data and
+the machines.
+.TP
+.B \-V
+Generate a dot file for Graphviz.
+.TP
+.B \-p
+Display printable characters on labels.
+.TP
 .B \-S <spec>
-FSM specification to output for -V
+FSM specification to output.
 .TP
 .B \-M <machine>
-Machine definition/instantiation to output for -V
+Machine definition/instantiation to output.
 .TP
 .B \-C
 The host language is C, C++, Obj-C or Obj-C++. This is the default host language option.
@@ -92,6 +117,58 @@ The host language is D.
 .TP
 .B \-J
 The host language is Java.
+.TP
+.B \-R
+The host language is Ruby.
+.TP
+.B \-L
+Inhibit writing of #line directives.
+.TP
+.B \-T0
+(C/D/Java/Ruby/C#) Generate a table driven FSM. This is the default code style.
+The table driven
+FSM represents the state machine as static data. There are tables of states,
+transitions, indicies and actions. The current state is stored in a variable.
+The execution is a loop that looks that given the current state and current
+character to process looks up the transition to take using a binary search,
+executes any actions and moves to the target state. In general, the table
+driven FSM produces a smaller binary and requires a less expensive host language
+compile but results in slower running code. The table driven FSM is suitable
+for any FSM.
+.TP
+.B \-T1
+(C/D/Ruby/C#) Generate a faster table driven FSM by expanding action lists in the action
+execute code.
+.TP
+.B \-F0
+(C/D/Ruby/C#) Generate a flat table driven FSM. Transitions are represented as an array
+indexed by the current alphabet character. This eliminates the need for a
+binary search to locate transitions and produces faster code, however it is
+only suitable for small alphabets.
+.TP
+.B \-F1
+(C/D/Ruby/C#) Generate a faster flat table driven FSM by expanding action lists in the action
+execute code.
+.TP
+.B \-G0
+(C/D/C#) Generate a goto driven FSM. The goto driven FSM represents the state machine
+as a series of goto statements. While in the machine, the current state is
+stored by the processor's instruction pointer. The execution is a flat function
+where control is passed from state to state using gotos. In general, the goto
+FSM produces faster code but results in a larger binary and a more expensive
+host language compile.
+.TP
+.B \-G1
+(C/D/C#) Generate a faster goto driven FSM by expanding action lists in the action
+execute code.
+.TP
+.B \-G2
+(C/D) Generate a really fast goto driven FSM by embedding action lists in the state
+machine control code.
+.TP
+.B \-P<N>
+(C/D) N-Way Split really fast goto-driven FSM.
+
 .SH RAGEL INPUT
 NOTE: This is a very brief description of Ragel input. Ragel is described in
 more detail in the user guide available from the homepage (see below).
@@ -128,6 +205,9 @@ Specify how to access the persistent state machine variables.
 .TP
 .I Write:
 Write some component of the machine.
+.TP
+.I Variable:
+Override the default variable names (p, pe, cs, act, etc).
 .SH BASIC MACHINES
 The basic machines are the base operands of the regular language expressions.
 .TP
@@ -248,14 +328,27 @@ Produces a machine that matches any string that is in both machine one and
 machine two.
 .TP
 .I expr - expr
-Produces a machine that matches string that is in machine one but not in
+Produces a machine that matches any string that is in machine one but not in
 machine two.
+.TP
+.I expr -- expr
+Strong Subtraction. Matches any string in machine one that does not have any string
+in machine two as a substring.
 .LP
 .B GROUP 3:
 .TP
 .I expr . expr
 Produces a machine that matches all the strings in machine one followed
 by all the strings in machine two.
+.TP
+.I expr :> expr
+Entry-Guarded Concatenation: terminates machine one upon entry to machine two.
+.TP
+.I expr :>> expr
+Finish-Guarded Concatenation: terminates machine one when machine two finishes.
+.TP
+.I expr <: expr
+Left-Guarded Concatenation: gives a higher priority to machine one.
 .LP
 NOTE: Concatenation is the default operator. Two machines next to each other
 with no operator between them results in the concatenation operation.
@@ -426,7 +519,7 @@ defaults to the name of the machine definition the priority is assigned in.
 Transitions do not have default priorities.
 .TP
 .I expr > int
-Assigns the priority int in all transitions entering into the machine.
+Assigns the priority int in all transitions leaving the start state.
 .TP
 .I expr @ int
 Assigns the priority int in all transitions that go into a final state.
@@ -442,7 +535,7 @@ to which the priority is assigned, allowing interactions to cross machine
 definition boundaries.
 .TP
 .I expr > (name,int)
-Assigns the priority int to name in all transitions entering into the machine.
+Assigns the priority int to name in all transitions leaving the start state.
 .TP
 .I expr @ (name, int)
 Assigns the priority int to name in all transitions that go into a final state.
@@ -460,7 +553,7 @@ Produces the kleene star of a machine. Matches zero or more repetitions of the
 machine.
 .TP
 .I expr **
-Longest Matching Kleene Star. This version of kleene star puts a higher
+Longest-Match Kleene Star. This version of kleene star puts a higher
 priority on staying in the machine over wrapping around and starting over. This
 operator is equivalent to ( ( expr ) $0 %1 )*.
 .TP
@@ -489,6 +582,10 @@ Produces a machine that matches n to m repetitions of expr.
 .I ! expr
 Produces a machine that matches any string not matched by the given machine.
 This operator is equivalent to ( *extend - expr ).
+.TP
+.I ^ expr
+Character-Level Negation. Matches any single character not matched by the
+single character machine expr.
 .LP
 .B GROUP 9:
 .TP
@@ -547,15 +644,13 @@ Return to the target state of the transition on which the last fcall was made.
 .TP
 .I fbreak;
 Save the current state and immediately break out of the machine.
-.SH BUGS
-Ragel is still under development and has not yet matured. There are probably
-many bugs.
 .SH CREDITS
-Ragel was written by Adrian Thurston <thurston@cs.queensu.ca>.  Objective-C
-output contributed by Eric Ocean. D output contributed by Alan West. 
+Ragel was written by Adrian Thurston <thurston@complang.org>.  Objective-C
+output contributed by Erich Ocean. D output contributed by Alan West. Ruby
+output contributed by Victor Hugo Borja. C Sharp code generation contributed by
+Daniel Tang. Contributions to Java code generation by Colin Fleming.
 .SH "SEE ALSO"
-.BR rlcodegen (1),
 .BR re2c (1),
 .BR flex (1)
 
-Homepage: http://www.cs.queensu.ca/home/thurston/ragel/
+Homepage: http://www.complang.org/ragel/

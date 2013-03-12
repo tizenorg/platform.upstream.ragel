@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2006 Adrian Thurston <thurston@cs.queensu.ca>
+ *  Copyright 2001-2008 Adrian Thurston <thurston@complang.org>
  */
 
 /*  This file is part of Ragel.
@@ -24,6 +24,7 @@
 
 #include <iostream>
 #include <limits.h>
+#include <sstream>
 #include "avlmap.h"
 #include "bstmap.h"
 #include "vector.h"
@@ -36,77 +37,6 @@
 
 /* Forwards. */
 using std::ostream;
-
-/* Nodes in the tree that use this action. */
-typedef Vector<NameInst*> ActionRefs;
-
-/* Element in list of actions. Contains the string for the code to exectute. */
-struct Action 
-:
-	public DListEl<Action>,
-	public AvlTreeEl<Action>
-{
-public:
-
-	Action( const InputLoc &loc, char *name, InlineList *inlineList )
-	:
-		loc(loc),
-		name(name),
-		inlineList(inlineList), 
-		actionId(-1),
-		numTransRefs(0),
-		numToStateRefs(0),
-		numFromStateRefs(0),
-		numEofRefs(0),
-		numCondRefs(0),
-		anyCall(false),
-		isLmAction(false)
-	{
-	}
-
-	/* Key for action dictionary. */
-	char *getKey() const { return name; }
-
-	/* Data collected during parse. */
-	InputLoc loc;
-	char *name;
-	InlineList *inlineList;
-	int actionId;
-
-	void actionName( ostream &out )
-	{
-		if ( name != 0 )
-			out << name;
-		else
-			out << loc.line << ":" << loc.col;
-	}
-
-	/* Places in the input text that reference the action. */
-	ActionRefs actionRefs;
-
-	/* Number of references in the final machine. */
-	bool numRefs() 
-		{ return numTransRefs + numToStateRefs + numFromStateRefs + numEofRefs; }
-	int numTransRefs;
-	int numToStateRefs;
-	int numFromStateRefs;
-	int numEofRefs;
-	int numCondRefs;
-	bool anyCall;
-
-	bool isLmAction;
-};
-
-/* A list of actions. */
-typedef DList<Action> ActionList;
-typedef AvlTree<Action, char *, CmpStr> ActionDict;
-
-/* Structure for reverse action mapping. */
-struct RevActionMapEl
-{
-	char *name;
-	InputLoc location;
-};
 
 struct VarDef;
 struct Join;
@@ -124,7 +54,10 @@ struct ReItem;
 struct ReOrBlock;
 struct ReOrItem;
 struct LongestMatch;
+struct InputData;
+struct CodeGenData;
 typedef DList<LongestMatch> LmList;
+
 
 /* Graph dictionary. */
 struct GraphDictEl 
@@ -132,14 +65,14 @@ struct GraphDictEl
 	public AvlTreeEl<GraphDictEl>,
 	public DListEl<GraphDictEl>
 {
-	GraphDictEl( char *k ) 
+	GraphDictEl( const char *k ) 
 		: key(k), value(0), isInstance(false) { }
-	GraphDictEl( char *k, VarDef *value ) 
+	GraphDictEl( const char *k, VarDef *value ) 
 		: key(k), value(value), isInstance(false) { }
 
 	const char *getKey() { return key; }
 
-	char *key;
+	const char *key;
 	VarDef *value;
 	bool isInstance;
 
@@ -147,7 +80,7 @@ struct GraphDictEl
 	InputLoc loc;
 };
 
-typedef AvlTree<GraphDictEl, char*, CmpStr> GraphDict;
+typedef AvlTree<GraphDictEl, const char*, CmpStr> GraphDict;
 typedef DList<GraphDictEl> GraphList;
 
 /* Priority name dictionary. */
@@ -155,19 +88,19 @@ typedef AvlMapEl<char*, int> PriorDictEl;
 typedef AvlMap<char*, int, CmpStr> PriorDict;
 
 /* Local error name dictionary. */
-typedef AvlMapEl<char*, int> LocalErrDictEl;
-typedef AvlMap<char*, int, CmpStr> LocalErrDict;
+typedef AvlMapEl<const char*, int> LocalErrDictEl;
+typedef AvlMap<const char*, int, CmpStr> LocalErrDict;
 
 /* Tree of instantiated names. */
-typedef BstMapEl<char*, NameInst*> NameMapEl;
-typedef BstMap<char*, NameInst*, CmpStr> NameMap;
+typedef BstMapEl<const char*, NameInst*> NameMapEl;
+typedef BstMap<const char*, NameInst*, CmpStr> NameMap;
 typedef Vector<NameInst*> NameVect;
 typedef BstSet<NameInst*> NameSet;
 
 /* Node in the tree of instantiated names. */
 struct NameInst
 {
-	NameInst( const InputLoc &loc, NameInst *parent, char *name, int id, bool isLabel ) : 
+	NameInst( const InputLoc &loc, NameInst *parent, const char *name, int id, bool isLabel ) : 
 		loc(loc), parent(parent), name(name), id(id), isLabel(isLabel),
 		isLongestMatch(false), numRefs(0), numUses(0), start(0), final(0) {}
 
@@ -177,7 +110,7 @@ struct NameInst
 	 * fully qulified names. */
 	NameInst *parent;
 
-	char *name;
+	const char *name;
 	int id;
 	bool isLabel;
 	bool isLongestMatch;
@@ -218,13 +151,24 @@ struct NameFrame
 	NameInst *prevLocalScope;
 };
 
+struct LengthDef
+{
+	LengthDef( char *name )
+		: name(name) {}
+
+	char *name;
+	LengthDef *prev, *next;
+};
+
+typedef DList<LengthDef> LengthDefList;
+
 /* Class to collect information about the machine during the 
  * parse of input. */
 struct ParseData
 {
 	/* Create a new parse data object. This is done at the beginning of every
 	 * fsm specification. */
-	ParseData( char *fileName, char *sectionName, const InputLoc &sectionLoc );
+	ParseData( const char *fileName, char *sectionName, const InputLoc &sectionLoc );
 	~ParseData();
 
 	/*
@@ -233,13 +177,14 @@ struct ParseData
 
 	/* Initialize a graph dict with the basic fsms. */
 	void initGraphDict();
-	void createBuiltin( char *name, BuiltinMachine builtin );
+	void createBuiltin( const char *name, BuiltinMachine builtin );
 
 	/* Make a name id in the current name instantiation scope if it is not
 	 * already there. */
-	NameInst *addNameInst( const InputLoc &loc, char *data, bool isLabel );
-	void makeRootName();
+	NameInst *addNameInst( const InputLoc &loc, const char *data, bool isLabel );
+	void makeRootNames();
 	void makeNameTree( GraphDictEl *gdNode );
+	void makeExportsNameTree();
 	void fillNameIndex( NameInst *from );
 	void printNameTree();
 
@@ -248,7 +193,7 @@ struct ParseData
 	void unsetObsoleteEntries( FsmAp *graph );
 
 	/* Resove name references in action code and epsilon transitions. */
-	NameSet resolvePart( NameInst *refFrom, char *data, bool recLabelsOnly );
+	NameSet resolvePart( NameInst *refFrom, const char *data, bool recLabelsOnly );
 	void resolveFrom( NameSet &result, NameInst *refFrom, 
 			const NameRef &nameRef, int namePos );
 	NameInst *resolveStateRef( const NameRef &nameRef, InputLoc &loc, Action *action );
@@ -256,8 +201,11 @@ struct ParseData
 	void resolveActionNameRefs();
 
 	/* Set the alphabet type. If type types are not valid returns false. */
-	bool setAlphType( char *s1, char *s2 );
-	bool setAlphType( char *s1 );
+	bool setAlphType( const InputLoc &loc, char *s1, char *s2 );
+	bool setAlphType( const InputLoc &loc, char *s1 );
+
+	/* Override one of the variables ragel uses. */
+	bool setVariable( char *var, InlineList *inlineList );
 
 	/* Unique actions. */
 	void removeDups( ActionTable &actionTable );
@@ -277,9 +225,12 @@ struct ParseData
 
 	void analyzeAction( Action *action, InlineList *inlineList );
 	void analyzeGraph( FsmAp *graph );
+	void makeExports();
 
 	void prepareMachineGen( GraphDictEl *graphDictEl );
+	void prepareMachineGenTBWrapped( GraphDictEl *graphDictEl );
 	void generateXML( ostream &out );
+	void generateReduced( InputData &inputData );
 	FsmAp *sectionGraph;
 	bool generatingSectionSubset;
 
@@ -308,7 +259,7 @@ struct ParseData
 	ActionList actionList;
 
 	/* The id of the next priority name and label. */
-	int nextPriorKey, nextLocalErrKey, nextNameId;
+	int nextPriorKey, nextLocalErrKey, nextNameId, nextCondId;
 	
 	/* The default priority number key for a machine. This is active during
 	 * the parse of the rhs of a machine assignment. */
@@ -319,11 +270,27 @@ struct ParseData
 	/* Alphabet type. */
 	HostType *userAlphType;
 	bool alphTypeSet;
+	InputLoc alphTypeLoc;
 
 	/* Element type and get key expression. */
 	InlineList *getKeyExpr;
 	InlineList *accessExpr;
-	InlineList *curStateExpr;
+
+	/* Stack management */
+	InlineList *prePushExpr;
+	InlineList *postPopExpr;
+
+	/* Overriding variables. */
+	InlineList *pExpr;
+	InlineList *peExpr;
+	InlineList *eofExpr;
+	InlineList *csExpr;
+	InlineList *topExpr;
+	InlineList *stackExpr;
+	InlineList *actExpr;
+	InlineList *tokstartExpr;
+	InlineList *tokendExpr;
+	InlineList *dataExpr;
 
 	/* The alphabet range. */
 	char *lowerNum, *upperNum;
@@ -331,19 +298,20 @@ struct ParseData
 	InputLoc rangeLowLoc, rangeHighLoc;
 
 	/* The name of the file the fsm is from, and the spec name. */
-	char *fileName;
+	const char *fileName;
 	char *sectionName;
 	InputLoc sectionLoc;
-
-	/* Number of errors encountered parsing the fsm spec. */
-	int errorCount;
 
 	/* Counting the action and priority ordering. */
 	int curActionOrd;
 	int curPriorOrd;
 
-	/* Root of the name tree. */
+	/* Root of the name tree. One root is for the instantiated machines. The
+	 * other root is for exported definitions. */
 	NameInst *rootName;
+	NameInst *exportsRootName;
+	
+	/* Name tree walking. */
 	NameInst *curNameInst;
 	int curNameChild;
 
@@ -360,6 +328,7 @@ struct ParseData
 	void initLongestMatchData();
 	void setLongestMatchData( FsmAp *graph );
 	void initNameWalk();
+	void initExportsNameWalk();
 	NameInst *nextNameScope() { return curNameInst->childVect[curNameChild]; }
 	NameFrame enterNameScope( bool isLocal, int numScopes );
 	void popNameScope( const NameFrame &frame );
@@ -375,7 +344,7 @@ struct ParseData
 	/* List of all longest match parse tree items. */
 	LmList lmList;
 
-	Action *newAction( char *name, InlineList *inlineList );
+	Action *newAction( const char *name, InlineList *inlineList );
 
 	Action *initTokStart;
 	int initTokStartOrd;
@@ -397,6 +366,11 @@ struct ParseData
 
 	CondData thisCondData;
 	KeyOps thisKeyOps;
+
+	ExportList exportList;
+	LengthDefList lengthDefList;
+
+	CodeGenData *cgd;
 };
 
 void afterOpMinimize( FsmAp *fsm, bool lastInSeq = true );
@@ -413,51 +387,5 @@ FsmAp *dotStarFsm( ParseData *pd );
 
 void errorStateLabels( const NameSet &locations );
 
-/* Data used by the parser specific to the current file. Supports the include
- * system, since a new parser is executed for each included file. */
-struct InputData
-{
-	InputData( char *fileName, char *includeSpec, char *includeTo ) :
-		pd(0), sectionName(0), defaultParseData(0), 
-		first_line(1), first_column(1), 
-		last_line(1), last_column(0), 
-		fileName(fileName), includeSpec(includeSpec), 
-		includeTo(includeTo), active(true)
-		{}
 
-	/* For collecting a name references. */
-	NameRef nameRef;
-	NameRefList nameRefList;
-
-	/* The parse data. For each fsm spec, the parser collects things that it parses
-	 * in data structures in here. */
-	ParseData *pd;
-
-	char *sectionName;
-	ParseData *defaultParseData;
-
-	int first_line;
-	int first_column;
-	int last_line;
-	int last_column;
-
-	char *fileName;
-
-	/* If this is an included file, this contains the specification to search
-	 * for. IncludeTo will contain the spec name that does the includng. */
-	char *includeSpec;
-	char *includeTo;
-
-	bool active;
-	InputLoc sectionLoc;
-};
-
-struct Parser;
-
-typedef AvlMap<char*, Parser *, CmpStr> ParserDict;
-typedef AvlMapEl<char*, Parser *> ParserDictEl;
-
-extern ParserDict parserDict;
-
-
-#endif /* _PARSEDATA_H */
+#endif

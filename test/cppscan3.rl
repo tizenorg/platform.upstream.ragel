@@ -44,13 +44,13 @@ char buf[BUFSIZE];
 struct Scanner
 {
 	int cs, act;
-	char *tokstart, *tokend;
+	const char *ts, *te;
 
 	void token( int tok );
 	void run();
 
 	void init( );
-	void execute( char *data, int len );
+	void execute( const char *data, int len );
 	int finish( );
 };
 
@@ -114,7 +114,7 @@ struct Scanner
 	'...' => { token( TK_DotDotDot );};
 
 	# Single char symbols.
-	( punct - [_"'] ) => { token( tokstart[0] );};
+	( punct - [_"'] ) => { token( ts[0] );};
 
 	action comment {
 		token( TK_Comment );
@@ -137,17 +137,19 @@ void Scanner::init( )
 
 /* Returns the count of bytes still in the buffer 
  * (shifted to the biginning) */
-void Scanner::execute( char *data, int len )
+void Scanner::execute( const char *data, int len )
 {
-	char *p = data;
-	char *pe = data + len;
+	const char *p = data;
+	const char *pe = data + len;
+	const char *eof = pe;
 
 	%% write exec;
+
+	cout << "P: " << (p - data) << endl;
 }
 
 int Scanner::finish( )
 {
-	%% write eof;
 	if ( cs == Scanner_error )
 		return -1;
 	if ( cs >= Scanner_first_final )
@@ -158,15 +160,15 @@ int Scanner::finish( )
 
 void Scanner::token( int tok )
 {
-	const char *data = tokstart;
-	int len = tokend - tokstart;
+	const char *data = ts;
+	int len = te - ts;
 	cout << "<" << tok << "> ";
 	for ( int i = 0; i < len; i++ )
 		cout << data[i];
 	cout << '\n';
 }
 
-void test( char *buf )
+void test( const char *buf )
 {
 	int len = strlen( buf );
 	std::ios::sync_with_stdio(false);
@@ -192,8 +194,7 @@ int main()
 		"44. 44\n"
 		"44 . 44\n"
 		"44.44\n"
-		"_hithere22\n"
-		"\n"
+		"_hithere22"
 	);
 
 	test(
@@ -207,7 +208,7 @@ int main()
 		"0x98\n"
 		"0x\n"
 		"//\n"
-		"/* * */\n"
+		"/* * */"
 	);
 
 	test(
@@ -245,6 +246,7 @@ int main()
 <241> 
 
 <195> _hithere22
+P: 51
 <193> '\''
 <192> "\n\d'\""
 <241> 
@@ -277,5 +279,7 @@ int main()
 <242> //
 
 <242> /* * */
+P: 55
+P: 1
 PARSE ERROR
 #endif

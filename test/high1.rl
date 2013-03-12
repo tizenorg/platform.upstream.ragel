@@ -19,7 +19,7 @@ struct high
 
 %%{
 	machine high;
-	variable curstate fsm->cs;
+	variable cs fsm->cs;
 
 	# We Want the header portion.
 	alphtype unsigned int;
@@ -49,8 +49,6 @@ void high_execute( struct high *fsm, const unsigned int *_data, int _len )
 
 int high_finish( struct high *fsm )
 {
-	%% write eof;
-
 	if ( fsm->cs == high_error )
 		return -1;
 	if ( fsm->cs >= high_first_final )
@@ -74,7 +72,7 @@ struct tokenizer
 
 %%{
 	machine tokenizer;
-	variable curstate fsm->cs;
+	variable cs fsm->cs;
 
 	action bufdigit {
 		if ( numlen < 8 )
@@ -119,14 +117,13 @@ void tokenizer_execute( struct tokenizer *fsm, const char *_data, int _len )
 {
 	const char *p = _data;
 	const char *pe = _data+_len;
+	const char *eof = pe;
 
 	%% write exec;
 }
 
 int tokenizer_finish( struct tokenizer *fsm )
 {
-	%% write eof;
-
 	if ( fsm->cs == tokenizer_error )
 		return -1;
 	if ( fsm->cs >= tokenizer_first_final )

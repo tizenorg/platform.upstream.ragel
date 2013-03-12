@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2006 Adrian Thurston <thurston@cs.queensu.ca>
+ *  Copyright 2001-2008 Adrian Thurston <thurston@complang.org>
  */
 
 /*  This file is part of Ragel.
@@ -31,12 +31,14 @@
 #include "parsetree.h"
 #include "mergesort.h"
 #include "xmlcodegen.h"
+#include "version.h"
+#include "inputdata.h"
 
 using namespace std;
 
-char machineMain[] = "main";
+char mainMachine[] = "main";
 
-void Token::set( char *str, int len )
+void Token::set( const char *str, int len )
 {
 	length = len;
 	data = new char[len+1];
@@ -60,7 +62,7 @@ void Token::append( const Token &other )
 void afterOpMinimize( FsmAp *fsm, bool lastInSeq )
 {
 	/* Switch on the prefered minimization algorithm. */
-	if ( minimizeOpt == MinimizeEveryOp || minimizeOpt == MinimizeMostOps && lastInSeq ) {
+	if ( minimizeOpt == MinimizeEveryOp || ( minimizeOpt == MinimizeMostOps && lastInSeq ) ) {
 		/* First clean up the graph. FsmAp operations may leave these
 		 * lying around. There should be no dead end states. The subtract
 		 * intersection operators are the only places where they may be
@@ -107,13 +109,13 @@ Key makeFsmKeyHex( char *str, const InputLoc &loc, ParseData *pd )
 
 	unsigned long ul = strtoul( str, 0, 16 );
 
-	if ( errno == ERANGE || unusedBits && ul >> (size * 8) ) {
+	if ( errno == ERANGE || ( unusedBits && ul >> (size * 8) ) ) {
 		error(loc) << "literal " << str << " overflows the alphabet type" << endl;
 		ul = 1 << (size * 8);
 	}
 
 	if ( unusedBits && keyOps->alphType->isSigned && ul >> (size * 8 - 1) )
-		ul |= (0xffffffff >> (size*8 ) ) << (size*8);
+		ul |= ( -1L >> (size*8) ) << (size*8);
 
 	return Key( (long)ul );
 }
@@ -129,12 +131,12 @@ Key makeFsmKeyDec( char *str, const InputLoc &loc, ParseData *pd )
 	long long ll = strtoll( str, 0, 10 );
 
 	/* Check for underflow. */
-	if ( errno == ERANGE && ll < 0 || ll < minVal) {
+	if ( ( errno == ERANGE && ll < 0 ) || ll < minVal) {
 		error(loc) << "literal " << str << " underflows the alphabet type" << endl;
 		ll = minVal;
 	}
 	/* Check for overflow. */
-	else if ( errno == ERANGE && ll > 0 || ll > maxVal ) {
+	else if ( ( errno == ERANGE && ll > 0 ) || ll > maxVal ) {
 		error(loc) << "literal " << str << " overflows the alphabet type" << endl;
 		ll = maxVal;
 	}
@@ -415,7 +417,7 @@ bool NameInst::anyRefsRec()
 
 /* Initialize the structure that will collect info during the parse of a
  * machine. */
-ParseData::ParseData( char *fileName, char *sectionName, 
+ParseData::ParseData( const char *fileName, char *sectionName, 
 		const InputLoc &sectionLoc )
 :	
 	sectionGraph(0),
@@ -424,22 +426,35 @@ ParseData::ParseData( char *fileName, char *sectionName,
 	/* 0 is reserved for global error actions. */
 	nextLocalErrKey(1),
 	nextNameId(0),
+	nextCondId(0),
 	alphTypeSet(false),
 	getKeyExpr(0),
 	accessExpr(0),
-	curStateExpr(0),
+	prePushExpr(0),
+	postPopExpr(0),
+	pExpr(0),
+	peExpr(0),
+	eofExpr(0),
+	csExpr(0),
+	topExpr(0),
+	stackExpr(0),
+	actExpr(0),
+	tokstartExpr(0),
+	tokendExpr(0),
+	dataExpr(0),
 	lowerNum(0),
 	upperNum(0),
 	fileName(fileName),
 	sectionName(sectionName),
 	sectionLoc(sectionLoc),
-	errorCount(0),
 	curActionOrd(0),
 	curPriorOrd(0),
 	rootName(0),
+	exportsRootName(0),
 	nextEpsilonResolvedLink(0),
 	nextLongestMatchId(1),
-	lmRequiresErrorState(false)
+	lmRequiresErrorState(false),
+	cgd(0)
 {
 	/* Initialize the dictionary of graphs. This is our symbol table. The
 	 * initialization needs to be done on construction which happens at the
@@ -458,7 +473,7 @@ ParseData::~ParseData()
 
 /* Make a name id in the current name instantiation scope if it is not
  * already there. */
-NameInst *ParseData::addNameInst( const InputLoc &loc, char *data, bool isLabel )
+NameInst *ParseData::addNameInst( const InputLoc &loc, const char *data, bool isLabel )
 {
 	/* Create the name instantitaion object and insert it. */
 	NameInst *newNameInst = new NameInst( loc, curNameInst, data, nextNameId++, isLabel );
@@ -471,6 +486,12 @@ NameInst *ParseData::addNameInst( const InputLoc &loc, char *data, bool isLabel 
 void ParseData::initNameWalk()
 {
 	curNameInst = rootName;
+	curNameChild = 0;
+}
+
+void ParseData::initExportsNameWalk()
+{
+	curNameInst = exportsRootName;
 	curNameChild = 0;
 }
 
@@ -532,11 +553,12 @@ void ParseData::unsetObsoleteEntries( FsmAp *graph )
 		if ( name->numUses == name->numRefs ) {
 			assert( graph->entryPoints.find( name->id ) != 0 );
 			graph->unsetEntry( name->id );
+			assert( graph->entryPoints.find( name->id ) == 0 );
 		}
 	}
 }
 
-NameSet ParseData::resolvePart( NameInst *refFrom, char *data, bool recLabelsOnly )
+NameSet ParseData::resolvePart( NameInst *refFrom, const char *data, bool recLabelsOnly )
 {
 	/* Queue needed for breadth-first search, load it with the start node. */
 	NameInstList nameQueue;
@@ -715,21 +737,25 @@ void ParseData::resolveNameRefs( InlineList *inlineList, Action *action )
 				/* Resolve, pass action for local search. */
 				NameInst *target = resolveStateRef( *item->nameRef, item->loc, action );
 
-				/* Check if the target goes into a longest match. */
-				NameInst *search = target->parent;
-				while ( search != 0 ) {
-					if ( search->isLongestMatch ) {
-						error(item->loc) << "cannot enter inside a longest "
-								"match construction as an entry point" << endl;
-						break;
+				/* Name lookup error reporting is handled by resolveStateRef. */
+				if ( target != 0 ) {
+					/* Check if the target goes into a longest match. */
+					NameInst *search = target->parent;
+					while ( search != 0 ) {
+						if ( search->isLongestMatch ) {
+							error(item->loc) << "cannot enter inside a longest "
+									"match construction as an entry point" << endl;
+							break;
+						}
+						search = search->parent;
 					}
-					search = search->parent;
+
+					/* Record the reference in the name. This will cause the
+					 * entry point to survive to the end of the graph
+					 * generating walk. */
+					target->numRefs += 1;
 				}
 
-				/* Note the reference in the name. This will cause the entry
-				 * point to survive to the end of the graph generating walk. */
-				if ( target != 0 )
-					target->numRefs += 1;
 				item->nameTarg = target;
 				break;
 			}
@@ -766,18 +792,18 @@ void ParseData::fillNameIndex( NameInst *from )
 		fillNameIndex( *name );
 }
 
-void ParseData::makeRootName()
+void ParseData::makeRootNames()
 {
 	/* Create the root name. */
 	rootName = new NameInst( InputLoc(), 0, 0, nextNameId++, false );
+	exportsRootName = new NameInst( InputLoc(), 0, 0, nextNameId++, false );
 }
 
 /* Build the name tree and supporting data structures. */
 void ParseData::makeNameTree( GraphDictEl *dictEl )
 {
 	/* Set up curNameInst for the walk. */
-	curNameInst = rootName;
-	curNameChild = 0;
+	initNameWalk();
 
 	if ( dictEl != 0 ) {
 		/* A start location has been specified. */
@@ -795,14 +821,16 @@ void ParseData::makeNameTree( GraphDictEl *dictEl )
 	nameIndex = new NameInst*[nextNameId];
 	memset( nameIndex, 0, sizeof(NameInst*)*nextNameId );
 	fillNameIndex( rootName );
+	fillNameIndex( exportsRootName );
 }
 
-void ParseData::createBuiltin( char *name, BuiltinMachine builtin )
+
+void ParseData::createBuiltin( const char *name, BuiltinMachine builtin )
 {
 	Expression *expression = new Expression( builtin );
 	Join *join = new Join( expression );
-	JoinOrLm *joinOrLm = new JoinOrLm( join );
-	VarDef *varDef = new VarDef( name, joinOrLm );
+	MachineDef *machineDef = new MachineDef( join );
+	VarDef *varDef = new VarDef( name, machineDef );
 	GraphDictEl *graphDictEl = new GraphDictEl( name, varDef );
 	graphDict.insert( graphDictEl );
 }
@@ -830,40 +858,51 @@ void ParseData::initGraphDict( )
 }
 
 /* Set the alphabet type. If the types are not valid returns false. */
-bool ParseData::setAlphType( char *s1, char *s2 )
+bool ParseData::setAlphType( const InputLoc &loc, char *s1, char *s2 )
 {
-	bool valid = false;
-	for ( int i = 0; i < hostLang->numHostTypes; i++ ) {
-		if ( strcmp( s1, hostLang->hostTypes[i].data1 ) == 0 && 
-				hostLang->hostTypes[i].data2 != 0 && 
-				strcmp( s2, hostLang->hostTypes[i].data2 ) == 0 )
-		{
-			valid = true;
-			userAlphType = hostLang->hostTypes + i;
-			break;
-		}
-	}
-
+	alphTypeLoc = loc;
+	userAlphType = findAlphType( s1, s2 );
 	alphTypeSet = true;
-	return valid;
+	return userAlphType != 0;
 }
 
 /* Set the alphabet type. If the types are not valid returns false. */
-bool ParseData::setAlphType( char *s1 )
+bool ParseData::setAlphType( const InputLoc &loc, char *s1 )
 {
-	bool valid = false;
-	for ( int i = 0; i < hostLang->numHostTypes; i++ ) {
-		if ( strcmp( s1, hostLang->hostTypes[i].data1 ) == 0 && 
-				hostLang->hostTypes[i].data2 == 0 )
-		{
-			valid = true;
-			userAlphType = hostLang->hostTypes + i;
-			break;
-		}
-	}
-
+	alphTypeLoc = loc;
+	userAlphType = findAlphType( s1 );
 	alphTypeSet = true;
-	return valid;
+	return userAlphType != 0;
+}
+
+bool ParseData::setVariable( char *var, InlineList *inlineList )
+{
+	bool set = true;
+
+	if ( strcmp( var, "p" ) == 0 )
+		pExpr = inlineList;
+	else if ( strcmp( var, "pe" ) == 0 )
+		peExpr = inlineList;
+	else if ( strcmp( var, "eof" ) == 0 )
+		eofExpr = inlineList;
+	else if ( strcmp( var, "cs" ) == 0 )
+		csExpr = inlineList;
+	else if ( strcmp( var, "data" ) == 0 )
+		dataExpr = inlineList;
+	else if ( strcmp( var, "top" ) == 0 )
+		topExpr = inlineList;
+	else if ( strcmp( var, "stack" ) == 0 )
+		stackExpr = inlineList;
+	else if ( strcmp( var, "act" ) == 0 )
+		actExpr = inlineList;
+	else if ( strcmp( var, "ts" ) == 0 )
+		tokstartExpr = inlineList;
+	else if ( strcmp( var, "te" ) == 0 )
+		tokendExpr = inlineList;
+	else
+		set = false;
+
+	return set;
 }
 
 /* Initialize the key operators object that will be referenced by all fsms
@@ -880,8 +919,7 @@ void ParseData::initKeyOps( )
 		thisKeyOps.maxKey = makeFsmKeyNum( upperNum, rangeHighLoc, this );
 	}
 
-	thisCondData.nextCondKey = thisKeyOps.maxKey;
-	thisCondData.nextCondKey.increment();
+	thisCondData.lastCondKey = thisKeyOps.maxKey;
 }
 
 void ParseData::printNameInst( NameInst *nameInst, int level )
@@ -890,7 +928,8 @@ void ParseData::printNameInst( NameInst *nameInst, int level )
 		cerr << "  ";
 	cerr << (nameInst->name != 0 ? nameInst->name : "<ANON>") << 
 			"  id: " << nameInst->id << 
-			"  refs: " << nameInst->numRefs << endl;
+			"  refs: " << nameInst->numRefs <<
+			"  uses: " << nameInst->numUses << endl;
 	for ( NameVect::Iter name = nameInst->childVect; name.lte(); name++ )
 		printNameInst( *name, level+1 );
 }
@@ -927,13 +966,14 @@ void ParseData::removeActionDups( FsmAp *graph )
 	}
 }
 
-Action *ParseData::newAction( char *name, InlineList *inlineList )
+Action *ParseData::newAction( const char *name, InlineList *inlineList )
 {
 	InputLoc loc;
 	loc.line = 1;
 	loc.col = 1;
+	loc.fileName = "NONE";
 
-	Action *action = new Action( loc, name, inlineList );
+	Action *action = new Action( loc, name, inlineList, nextCondId++ );
 	action->actionRefs.append( rootName );
 	actionList.append( action );
 	return action;
@@ -957,13 +997,13 @@ void ParseData::initLongestMatchData()
 		/* The setTokStart action sets tokstart. */
 		InlineList *il5 = new InlineList;
 		il5->append( new InlineItem( InputLoc(), InlineItem::LmSetTokStart ) );
-		setTokStart = newAction( "tokstart", il5 );
+		setTokStart = newAction( "ts", il5 );
 		setTokStart->isLmAction = true;
 
 		/* The setTokEnd action sets tokend. */
 		InlineList *il3 = new InlineList;
 		il3->append( new InlineItem( InputLoc(), InlineItem::LmSetTokEnd ) );
-		setTokEnd = newAction( "tokend", il3 );
+		setTokEnd = newAction( "te", il3 );
 		setTokEnd->isLmAction = true;
 
 		/* The action will also need an ordering: ahead of all user action
@@ -1030,11 +1070,16 @@ FsmAp *ParseData::makeInstance( GraphDictEl *gdNode )
 	 * All state construction is now complete.
 	 */
 
+	/* Transfer actions from the out action tables to eof action tables. */
+	for ( StateSet::Iter state = graph->finStateSet; state.lte(); state++ )
+		graph->transferOutActions( *state );
+
 	/* Transfer global error actions. */
 	for ( StateList::Iter state = graph->stateList; state.lte(); state++ )
 		graph->transferErrorActions( state, 0 );
 	
-	removeActionDups( graph );
+	if ( ::wantDupsRemoved )
+		removeActionDups( graph );
 
 	/* Remove unreachable states. There should be no dead end states. The
 	 * subtract and intersection operators are the only places where they may
@@ -1083,7 +1128,7 @@ void ParseData::printNameTree()
 	/* Show that the name index is correct. */
 	for ( int ni = 0; ni < nextNameId; ni++ ) {
 		cerr << ni << ": ";
-		char *name = nameIndex[ni]->name;
+		const char *name = nameIndex[ni]->name;
 		cerr << ( name != 0 ? name : "<ANON>" ) << endl;
 	}
 }
@@ -1101,6 +1146,8 @@ FsmAp *ParseData::makeSpecific( GraphDictEl *gdNode )
 	 * graph there's a good chance that many name references will fail. This
 	 * is okay since generating part of the graph is usually only done when
 	 * inspecting the compiled machine. */
+
+	/* Same story for extern entry point references. */
 
 	/* Flag this case so that the XML code generator is aware that we haven't
 	 * looked up name references in actions. It can then avoid segfaulting. */
@@ -1126,6 +1173,10 @@ FsmAp *ParseData::makeAll()
 	/* Resolve action code name references. */
 	resolveActionNameRefs();
 
+	/* Force name references to the top level instantiations. */
+	for ( NameVect::Iter inst = rootName->childVect; inst.lte(); inst++ )
+		(*inst)->numRefs += 1;
+
 	FsmAp *mainGraph = 0;
 	FsmAp **graphs = new FsmAp*[instanceList.length()];
 	int numOthers = 0;
@@ -1133,22 +1184,18 @@ FsmAp *ParseData::makeAll()
 	/* Make all the instantiations, we know that main exists in this list. */
 	initNameWalk();
 	for ( GraphList::Iter glel = instanceList; glel.lte();  glel++ ) {
-		if ( strcmp( glel->key, machineMain ) == 0 ) {
+		if ( strcmp( glel->key, mainMachine ) == 0 ) {
 			/* Main graph is always instantiated. */
 			mainGraph = makeInstance( glel );
 		}
 		else {
-			/* Check to see if the instance is ever referenced. */
-			NameInst *nameInst = nextNameScope();
-			if ( nameInst->anyRefsRec() )
-				graphs[numOthers++] = makeInstance( glel );
-			else {
-				/* Need to walk over the name tree item. */
-				NameFrame nameFrame = enterNameScope( true, 1 );
-				popNameScope( nameFrame );
-			}
+			/* Instantiate and store in others array. */
+			graphs[numOthers++] = makeInstance( glel );
 		}
 	}
+
+	if ( mainGraph == 0 )
+		mainGraph = graphs[--numOthers];
 
 	if ( numOthers > 0 ) {
 		/* Add all the other graphs into main. */
@@ -1199,31 +1246,9 @@ void ParseData::checkInlineList( Action *act, InlineList *inlineList )
 		/* EOF checks. */
 		if ( act->numEofRefs > 0 ) {
 			switch ( item->type ) {
-			case InlineItem::PChar: 
-				error(item->loc) << "pointer to current element does not exist in "
-						"EOF action code" << endl;
-				break;
-			case InlineItem::Char: 
-				error(item->loc) << "current element does not exist in "
-						"EOF action code" << endl;
-				break;
-			case InlineItem::Hold:
-				error(item->loc) << "changing the current element not possible in "
-						"EOF action code" << endl;
-				break;
-			case InlineItem::Exec:
-				error(item->loc) << "changing the current element not possible in "
-						"EOF action code" << endl;
-				break;
-			case InlineItem::Goto: case InlineItem::Call: 
-			case InlineItem::Next: case InlineItem::GotoExpr: 
-			case InlineItem::CallExpr: case InlineItem::NextExpr:
-			case InlineItem::Ret:
-				error(item->loc) << "changing the current state not possible in "
-						"EOF action code" << endl;
-				break;
-			default:
-				break;
+				/* Currently no checks. */
+				default:
+					break;
 			}
 		}
 
@@ -1287,11 +1312,83 @@ void ParseData::analyzeGraph( FsmAp *graph )
 		checkAction( act );
 }
 
+void ParseData::makeExportsNameTree()
+{
+	/* Make a name tree for the exports. */
+	initExportsNameWalk();
+
+	/* First make the name tree. */
+	for ( GraphDict::Iter gdel = graphDict; gdel.lte(); gdel++ ) {
+		if ( gdel->value->isExport ) {
+			/* Recurse on the instance. */
+			gdel->value->makeNameTree( gdel->loc, this );
+		}
+	}
+}
+
+void ParseData::makeExports()
+{
+	makeExportsNameTree();
+
+	/* Resove name references in the tree. */
+	initExportsNameWalk();
+	for ( GraphDict::Iter gdel = graphDict; gdel.lte(); gdel++ ) {
+		if ( gdel->value->isExport )
+			gdel->value->resolveNameRefs( this );
+	}
+
+	/* Make all the instantiations, we know that main exists in this list. */
+	initExportsNameWalk();
+	for ( GraphDict::Iter gdel = graphDict; gdel.lte();  gdel++ ) {
+		/* Check if this var def is an export. */
+		if ( gdel->value->isExport ) {
+			/* Build the graph from a walk of the parse tree. */
+			FsmAp *graph = gdel->value->walk( this );
+
+			/* Build the graph from a walk of the parse tree. */
+			if ( !graph->checkSingleCharMachine() ) {
+				error(gdel->loc) << "bad export machine, must define "
+						"a single character" << endl;
+			}
+			else {
+				/* Safe to extract the key and declare the export. */
+				Key exportKey = graph->startState->outList.head->lowKey;
+				exportList.append( new Export( gdel->value->name, exportKey ) );
+			}
+		}
+	}
+
+}
+
+/* Construct the machine and catch failures which can occur during
+ * construction. */
 void ParseData::prepareMachineGen( GraphDictEl *graphDictEl )
+{
+	try {
+		/* This machine construction can fail. */
+		prepareMachineGenTBWrapped( graphDictEl );
+	}
+	catch ( FsmConstructFail fail ) {
+		switch ( fail.reason ) {
+			case FsmConstructFail::CondNoKeySpace: {
+				InputLoc &loc = alphTypeSet ? alphTypeLoc : sectionLoc;
+				error(loc) << "sorry, no more characters are "
+						"available in the alphabet space" << endl;
+				error(loc) << "  for conditions, please use a "
+						"smaller alphtype or reduce" << endl;
+				error(loc) << "  the span of characters on which "
+						"conditions are embedded" << endl;
+				break;
+			}
+		}
+	}
+}
+
+void ParseData::prepareMachineGenTBWrapped( GraphDictEl *graphDictEl )
 {
 	beginProcessing();
 	initKeyOps();
-	makeRootName();
+	makeRootNames();
 	initLongestMatchData();
 
 	/* Make the graph, do minimization. */
@@ -1299,6 +1396,9 @@ void ParseData::prepareMachineGen( GraphDictEl *graphDictEl )
 		sectionGraph = makeAll();
 	else
 		sectionGraph = makeSpecific( graphDictEl );
+	
+	/* Compute exports from the export definitions. */
+	makeExports();
 
 	/* If any errors have occured in the input file then don't write anything. */
 	if ( gblErrorCount > 0 )
@@ -1308,6 +1408,43 @@ void ParseData::prepareMachineGen( GraphDictEl *graphDictEl )
 
 	/* Depends on the graph analysis. */
 	setLongestMatchData( sectionGraph );
+
+	/* Decide if an error state is necessary.
+	 *  1. There is an error transition
+	 *  2. There is a gap in the transitions
+	 *  3. The longest match operator requires it. */
+	if ( lmRequiresErrorState || sectionGraph->hasErrorTrans() )
+		sectionGraph->errState = sectionGraph->addState();
+
+	/* State numbers need to be assigned such that all final states have a
+	 * larger state id number than all non-final states. This enables the
+	 * first_final mechanism to function correctly. We also want states to be
+	 * ordered in a predictable fashion. So we first apply a depth-first
+	 * search, then do a stable sort by final state status, then assign
+	 * numbers. */
+
+	sectionGraph->depthFirstOrdering();
+	sectionGraph->sortStatesByFinal();
+	sectionGraph->setStateNumbers( 0 );
+}
+
+void ParseData::generateReduced( InputData &inputData )
+{
+	beginProcessing();
+
+	cgd = makeCodeGen( inputData.inputFileName, sectionName, *inputData.outStream );
+
+	/* Make the generator. */
+	BackendGen backendGen( sectionName, this, sectionGraph, cgd );
+
+	/* Write out with it. */
+	backendGen.makeBackend();
+
+	if ( printStatistics ) {
+		cerr << "fsm name  : " << sectionName << endl;
+		cerr << "num states: " << sectionGraph->stateList.length() << endl;
+		cerr << endl;
+	}
 }
 
 void ParseData::generateXML( ostream &out )
@@ -1327,106 +1464,3 @@ void ParseData::generateXML( ostream &out )
 	}
 }
 
-/* Send eof to all parsers. */
-void terminateAllParsers( )
-{
-	/* FIXME: a proper token is needed here. Suppose we should use the
-	 * location of EOF in the last file that the parser was referenced in. */
-	InputLoc loc;
-	loc.fileName = "<EOF>";
-	loc.line = 0;
-	loc.col = 0;
-	for ( ParserDict::Iter pdel = parserDict; pdel.lte(); pdel++ )
-		pdel->value->token( loc, _eof, 0, 0 );
-}
-
-void checkMachines( )
-{
-	for ( ParserDict::Iter parser = parserDict; parser.lte(); parser++ ) {
-		ParseData *pd = parser->value->pd;
-		if ( pd->instanceList.length() > 0 ) {
-			/* There must be a main graph defined. */
-			/* No machine name. Need to have a main. Make sure it was given. */
-			GraphDictEl *mainEl = pd->graphDict.find( machineMain );
-			if ( mainEl == 0 ) {
-				error(pd->sectionLoc) << "main graph not defined in \"" << 
-						pd->sectionName << "\"" << endl;
-			}
-		}
-	}
-}
-
-void writeLanguage( std::ostream &out )
-{
-	out << " lang=\"";
-	switch ( hostLangType ) {
-		case CCode:    out << "C"; break;
-		case DCode:    out << "D"; break;
-		case JavaCode: out << "Java"; break;
-	}
-	out << "\"";
-	
-}
-
-void writeMachines( std::ostream &out, std::string hostData, char *inputFileName )
-{
-	if ( machineSpec == 0 && machineName == 0 ) {
-		/* No machine spec or machine name given. Generate everything. */
-		for ( ParserDict::Iter parser = parserDict; parser.lte(); parser++ ) {
-			ParseData *pd = parser->value->pd;
-			if ( pd->instanceList.length() > 0 )
-				pd->prepareMachineGen( 0 );
-		}
-
-		if ( gblErrorCount == 0 ) {
-			out << "<ragel filename=\"" << inputFileName << "\"";
-			writeLanguage( out );
-			out << ">\n";
-			for ( ParserDict::Iter parser = parserDict; parser.lte(); parser++ ) {
-				ParseData *pd = parser->value->pd;
-				if ( pd->instanceList.length() > 0 )
-					pd->generateXML( out );
-			}
-			out << hostData;
-			out << "</ragel>\n";
-		}
-	}
-	else if ( parserDict.length() > 0 ) {
-		/* There is either a machine spec or machine name given. */
-		ParseData *parseData = 0;
-		GraphDictEl *graphDictEl = 0;
-
-		/* Traverse the sections, break out when we find a section/machine
-		 * that matches the one specified. */
-		for ( ParserDict::Iter parser = parserDict; parser.lte(); parser++ ) {
-			ParseData *checkPd = parser->value->pd;
-			if ( machineSpec == 0 || strcmp( checkPd->sectionName, machineSpec ) == 0 ) {
-				GraphDictEl *checkGdEl = 0;
-				if ( machineName == 0 || (checkGdEl = 
-						checkPd->graphDict.find( machineName )) != 0 )
-				{
-					/* Have a machine spec and/or machine name that matches
-					 * the -M/-S options. */
-					parseData = checkPd;
-					graphDictEl = checkGdEl;
-					break;
-				}
-			}
-		}
-
-		if ( parseData == 0 )
-			error() << "could not locate machine specified with -S and/or -M" << endl;
-		else {
-			/* Section/Machine to emit was found. Prepare and emit it. */
-			parseData->prepareMachineGen( graphDictEl );
-			if ( gblErrorCount == 0 ) {
-				out << "<ragel filename=\"" << inputFileName << "\"";
-				writeLanguage( out );
-				out << ">\n";
-				parseData->generateXML( out );
-				out << hostData;
-				out << "</ragel>\n";
-			}
-		}
-	}
-}

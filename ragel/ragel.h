@@ -1,5 +1,5 @@
 /*
- *  Copyright 2001-2003 Adrian Thurston <thurston@cs.queensu.ca>
+ *  Copyright 2001-2007 Adrian Thurston <thurston@complang.org>
  */
 
 /*  This file is part of Ragel.
@@ -26,9 +26,24 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include "vector.h"
 #include "config.h"
+#include "common.h"
 
 #define PROGNAME "ragel"
+
+/* Target output style. */
+enum CodeStyle
+{
+	GenTables,
+	GenFTables,
+	GenFlat,
+	GenFFlat,
+	GenGoto,
+	GenFGoto,
+	GenIpGoto,
+	GenSplit
+};
 
 /* To what degree are machine minimized. */
 enum MinimizeLevel {
@@ -45,36 +60,61 @@ enum MinimizeOpt {
 	MinimizeEveryOp
 };
 
-
-/* IO filenames and stream. */
-extern char *outputFileName;
-extern std::istream *inStream;
-extern std::ostream *outStream;
+/* Target implementation */
+enum RubyImplEnum
+{
+	MRI,
+	Rubinius
+};
 
 /* Options. */
 extern MinimizeLevel minimizeLevel;
 extern MinimizeOpt minimizeOpt;
-extern char *machineSpec, *machineName;
+extern const char *machineSpec, *machineName;
 extern bool printStatistics;
+extern bool wantDupsRemoved;
+extern bool generateDot;
+extern bool generateXML;
+extern RubyImplEnum rubyImpl;
 
+/* Error reporting format. */
+enum ErrorFormat {
+	ErrorFormatGNU,
+	ErrorFormatMSVC,
+};
+
+extern ErrorFormat errorFormat;
 extern int gblErrorCount;
-extern char machineMain[];
+extern char mainMachine[];
+
+InputLoc makeInputLoc( const char *fileName, int line = 0, int col = 0 );
+std::ostream &operator<<( std::ostream &out, const InputLoc &loc );
 
 /* Error reporting. */
-struct InputLoc;
 std::ostream &error();
 std::ostream &error( const InputLoc &loc ); 
-std::ostream &warning( ); 
 std::ostream &warning( const InputLoc &loc ); 
 
-void scan( char *fileName, std::istream &input );
-void terminateAllParsers( );
-void checkMachines( );
-void writeMachines( std::ostream &out, std::string hostData, char *inputFileName );
-void xmlEscapeHost( std::ostream &out, char *data, int len );
+struct XmlParser;
 
+void xmlEscapeHost( std::ostream &out, char *data, long len );
 
-/* Size of the include stack. */
-#define INCLUDE_STACK_SIZE 32
+extern CodeStyle codeStyle;
 
-#endif /* _RAGEL_H */
+/* IO filenames and stream. */
+extern bool displayPrintables;
+extern int gblErrorCount;
+
+/* Options. */
+extern int numSplitPartitions;
+extern bool noLineDirectives;
+
+std::ostream &error();
+
+/* Target language and output style. */
+extern CodeStyle codeStyle;
+
+extern int numSplitPartitions;
+extern bool noLineDirectives;
+
+#endif

@@ -162,13 +162,13 @@
 {
 	const char *p = data; 
 	const char *pe = data + len;
+	const char *eof = pe;
 
 	%% write exec;
 }
 
 - (int) finish;
 {
-	%% write eof;
 	if ( cs == Clang_error ) 
 		return -1;
 	if ( cs >= Clang_first_final ) 

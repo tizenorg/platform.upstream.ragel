@@ -74,6 +74,12 @@ redefine al_host_block
 	|	'{ [NL] [IN] [c_statements] [EX] '} [NL]
 end define
 
+redefine cond_action_stmt
+		'action [id] '{ [al_expr] '} [NL]
+	|	'action [id] '{ [c_expr] '} [NL]
+end redefine
+
+
 rule boolTypes
 	replace [al_type_decl]
 		'bool
@@ -116,6 +122,13 @@ function alStmtToC1 AlStmt [action_lang_stmt]
 		Result
 end function
 
+function alTermToC
+	replace [al_term]
+		'first_token_char
+	by
+		'ts '[0]
+end function
+
 function alExprExtendToC AlExprExtend [repeat al_expr_extend]
 	deconstruct AlExprExtend
 		Op [al_expr_op] Term [al_term] Rest [repeat al_expr_extend]
@@ -123,7 +136,7 @@ function alExprExtendToC AlExprExtend [repeat al_expr_extend]
 		_ [alExprExtendToC Rest]
 	replace [repeat c_expr_extend]
 	by
-		Op Term RestC
+		Op Term [alTermToC] RestC
 end function
 
 function alExprToC AlExpr [al_expr]
@@ -132,7 +145,7 @@ function alExprToC AlExpr [al_expr]
 	construct CExprExtend [repeat c_expr_extend]
 		_ [alExprExtendToC AlExprExtend]
 	construct Result [opt c_expr]
-		ALTerm CExprExtend
+		ALTerm [alTermToC] CExprExtend
 	replace [opt c_expr]
 	by
 		Result [boolVals1] [boolVals2]
@@ -206,6 +219,22 @@ function alStmtToC4b AlStmt [action_lang_stmt]
 		'fputs '( String , 'stdout ');
 end function
 
+function alStmtToC4c AlStmt [action_lang_stmt]
+	deconstruct AlStmt
+		'printb Id [id] ';
+	replace [repeat c_lang_stmt]
+	by
+		'fwrite '( Id ', '1 ', 'pos ', 'stdout ');
+end function
+
+function alStmtToC4d AlStmt [action_lang_stmt]
+	deconstruct AlStmt
+		'print_token ';
+	replace [repeat c_lang_stmt]
+	by
+		'fwrite '( 'ts ', '1 ', 'te '- 'ts ', 'stdout ');
+end function
+
 function alStmtToC5 AlStmt [action_lang_stmt]
 	deconstruct AlStmt
 		'{ AlSubStmts [repeat action_lang_stmt] '}
@@ -234,6 +263,8 @@ function alToC AlStmts [repeat action_lang_stmt]
 			[alStmtToC3 FirstStmt]
 			[alStmtToC4a FirstStmt]
 			[alStmtToC4b FirstStmt]
+			[alStmtToC4c FirstStmt]
+			[alStmtToC4d FirstStmt]
 			[alStmtToC5 FirstStmt]
 			[alStmtToC6 FirstStmt]
 	construct RestC [repeat c_lang_stmt]
@@ -252,6 +283,17 @@ rule actionTransC
 		'{ CStmts '}
 end rule
 
+rule condTransC
+	replace [cond_action_stmt]
+		'action Id [id] '{ AlExpr [al_expr] '}
+	construct OptCExpr [opt c_expr]
+		_ [alExprToC AlExpr]
+	deconstruct OptCExpr
+		CExpr [c_expr]
+	by
+		'action Id '{ CExpr '}
+end rule
+
 function langTransC
 	replace [program]
 		Definitions [repeat action_lang_stmt]
@@ -266,7 +308,7 @@ function langTransC
 		CDefinitions
 		'%%
 		CInitializations
-		RagelDef [actionTransC]
+		RagelDef [actionTransC] [condTransC]
 end function
 
 function main

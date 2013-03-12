@@ -3,6 +3,7 @@
  */
 
 #include <iostream>
+#include <string.h>
 using namespace std;
 
 #define TK_Dlit 192
@@ -39,8 +40,9 @@ using namespace std;
 #define BUFSIZE 4096
 
 int tok;
-char buf[BUFSIZE], *tokstart, *tokend;
-void token( char *data, int len );
+char buf[BUFSIZE];
+const char *ts, *te;
+void token( const char *data, int len );
 bool discard = false;
 
 struct Scanner
@@ -56,7 +58,7 @@ struct Scanner
 	// the data, the machine is in the error state and can never accept, 0 if
 	// the machine is in a non-accepting state and 1 if the machine is in an
 	// accepting state.
-	int execute( char *data, int len );
+	int execute( const char *data, int len );
 
 	// Indicate that there is no more data. Returns -1 if the machine finishes
 	// in the error state and does not accept, 0 if the machine finishes
@@ -141,7 +143,7 @@ struct Scanner
 
 	action onError {
 		if ( tok != 0 ) {
-			char *rst_data;
+			const char *rst_data;
 
 			if ( tok == TK_Comment || tok == TK_Whitespace ) {
 				/* Reset comment status, don't send. */
@@ -153,19 +155,19 @@ struct Scanner
 			}
 			else {
 				/* Send the token. */
-				token( tokstart, tokend - tokstart + 1 );
+				token( ts, te - ts + 1 );
 
 				/* Restart right after the token. */
-				rst_data = tokend+1;
+				rst_data = te+1;
 			}
 
-			tokstart = 0;
+			ts = 0;
 			fexec rst_data;
 			fgoto main;
 		}
 	}
 
-	main := tokens >{tokstart=fpc;} @{tokend=fpc;} $!onError;
+	main := tokens >{ts=fpc;} @{te=fpc;} $!onError;
 }%%
 
 %% write data;
@@ -173,17 +175,18 @@ struct Scanner
 int Scanner::init( )
 {
 	tok = 0;
-	tokstart = 0;
-	tokend = 0;
+	ts = 0;
+	te = 0;
 
 	%% write init;
 	return 1;
 }
 
-int Scanner::execute( char *data, int len )
+int Scanner::execute( const char *data, int len )
 {
-	char *p = data;
-	char *pe = data + len;
+	const char *p = data;
+	const char *pe = data + len;
+	const char *eof = pe;
 
 	%% write exec;
 
@@ -196,7 +199,6 @@ int Scanner::execute( char *data, int len )
 
 int Scanner::finish( )
 {
-	%% write eof;
 	if ( cs == Scanner_error )
 		return -1;
 	if ( cs >= Scanner_first_final )
@@ -205,7 +207,7 @@ int Scanner::finish( )
 }
 
 
-void token( char *data, int len )
+void token( const char *data, int len )
 {
 	cout << "<" << tok << "> ";
 	for ( int i = 0; i < len; i++ )
@@ -213,14 +215,14 @@ void token( char *data, int len )
 	cout << '\n';
 }
 
-void test( char * data )
+void test( const char * data )
 {
 	Scanner scanner;
 	scanner.init();
 	scanner.execute( data, strlen(data) );
 	scanner.finish();
 	if ( tok != 0 && tok != TK_Comment && tok != TK_Whitespace )
-		token( tokstart, tokend - tokstart + 1 );
+		token( ts, te - ts + 1 );
 }
 
 int main()

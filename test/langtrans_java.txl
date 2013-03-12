@@ -24,6 +24,7 @@ end define
 define java_type_decl
 		[al_type_decl]
 	|	'boolean
+	|	'String
 end define
 
 define java_expr_stmt
@@ -43,6 +44,7 @@ define java_term
 	|	[id] [repeat java_dot_id]
 	|	[id] [repeat java_dot_id] '( [java_args] ')
 	|	'new [java_type_decl] [union]
+	|	'new [java_type_decl] '( [java_args] ') 
 end define
 
 define java_dot_id
@@ -85,6 +87,12 @@ redefine al_host_block
 	|	'{ [NL] [IN] [java_statements] [EX] '} [NL]
 end define
 
+redefine cond_action_stmt
+		'action [id] '{ [al_expr] '} [NL]
+	|	'action [id] '{ [java_expr] '} [NL]
+end redefine
+
+
 function clearUnion Type [java_type_decl] Id [id] 
 	replace [opt union]
 		Union [union]
@@ -124,6 +132,13 @@ function alStmtToJava1 AlStmt [action_lang_stmt]
 		Result
 end function
 
+function alTermToJava
+	replace [al_term]
+		'first_token_char
+	by
+		'data '[ts]
+end function
+
 function alExprExtendToJava AlExprExtend [repeat al_expr_extend]
 	deconstruct AlExprExtend
 		Op [al_expr_op] Term [al_term] Rest [repeat al_expr_extend]
@@ -131,7 +146,7 @@ function alExprExtendToJava AlExprExtend [repeat al_expr_extend]
 		_ [alExprExtendToJava Rest]
 	replace [repeat java_expr_extend]
 	by
-		Op Term JavaRest
+		Op Term [alTermToJava] JavaRest
 end function
 
 function alExprToJava AlExpr [al_expr]
@@ -140,7 +155,7 @@ function alExprToJava AlExpr [al_expr]
 	construct JavaExprExtend [repeat java_expr_extend]
 		_ [alExprExtendToJava AlExprExtend]
 	construct Result [opt java_expr]
-		ALTerm JavaExprExtend
+		ALTerm [alTermToJava] JavaExprExtend
 	replace [opt java_expr]
 	by
 		Result 
@@ -214,6 +229,24 @@ function alStmtToJava4b AlStmt [action_lang_stmt]
 		'System '. 'out '. 'print '( String ');
 end function
 
+function alStmtToJava4c AlStmt [action_lang_stmt]
+	deconstruct AlStmt
+		'printb Id [id] ';
+	replace [repeat java_lang_stmt]
+	by
+		'_s '= 'new 'String '( Id ', '0 ', 'pos ') ';
+		'System '. 'out '. 'print '( '_s ');
+end function
+
+function alStmtToJava4d AlStmt [action_lang_stmt]
+	deconstruct AlStmt
+		'print_token ';
+	replace [repeat java_lang_stmt]
+	by
+		'_s '= 'new 'String '( 'data ', 'ts ', 'te '- 'ts ') ';
+		'System '. 'out '. 'print '( '_s ');
+end function
+
 function alStmtToJava5 AlStmt [action_lang_stmt]
 	deconstruct AlStmt
 		'{ AlSubStmts [repeat action_lang_stmt] '}
@@ -243,6 +276,8 @@ function alToJava AlStmts [repeat action_lang_stmt]
 			[alStmtToJava3 FirstStmt]
 			[alStmtToJava4a FirstStmt]
 			[alStmtToJava4b FirstStmt]
+			[alStmtToJava4c FirstStmt]
+			[alStmtToJava4d FirstStmt]
 			[alStmtToJava5 FirstStmt]
 			[alStmtToJava6 FirstStmt]
 	construct JavaRest [repeat java_lang_stmt]
@@ -259,6 +294,17 @@ rule actionTransJava
 		_ [alToJava AlStmts]
 	by
 		'{ JavaStmts '}
+end rule
+
+rule condTransJava
+	replace [cond_action_stmt]
+		'action Id [id] '{ AlExpr [al_expr] '}
+	construct OptJavaExpr [opt java_expr]
+		_ [alExprToJava AlExpr]
+	deconstruct OptJavaExpr
+		JavaExpr [java_expr]
+	by
+		'action Id '{ JavaExpr '}
 end rule
 
 rule machineName
@@ -283,7 +329,7 @@ function langTransJava
 	construct JavaInitializations [repeat java_lang_stmt]
 		_ [alToJava Initializations]
 	construct NewRagelDef [ragel_def]
-		RagelDef [actionTransJava] [machineName]
+		RagelDef [actionTransJava] [condTransJava] [machineName]
 	import ArrayInits [java_statements]
 		ArrayInitStmts [repeat java_lang_stmt]
 	by

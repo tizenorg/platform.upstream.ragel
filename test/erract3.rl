@@ -12,7 +12,7 @@ struct erract
 
 %%{
 	machine erract;
-	variable curstate fsm->cs;
+	variable cs fsm->cs;
 
 	# The data that is to go into the fsm structure.
 	action hello_fails { printf("hello fails\n");}
@@ -33,13 +33,12 @@ void erract_execute( struct erract *fsm, const char *_data, int _len )
 {
 	const char *p = _data;
 	const char *pe = _data+_len;
+	const char *eof = pe;
 	%% write exec;
 }
 
 int erract_finish( struct erract *fsm )
 {
-	%% write eof;
-
 	if ( fsm->cs == erract_error )
 		return -1;
 	else if ( fsm->cs >= erract_first_final )
