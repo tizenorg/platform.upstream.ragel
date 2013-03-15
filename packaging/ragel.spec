@@ -7,7 +7,6 @@ License:    TO BE FILLED IN
 Source0:    %{name}-%{version}.tar.gz
 Patch0:     no-doc.patch
 
-
 %description
 compiles finite state machines into code in various languages
 Ragel compiles finite state machines from regular languages into C, C++,
@@ -39,8 +38,8 @@ rm -rf %{buildroot}
 mkdir -p %{buildroot}/usr/share/license
 cp %{_builddir}/%{buildsubdir}/COPYING %{buildroot}/usr/share/license/%{name}
 
+%remove_docs
 
 %files
 %{_bindir}/ragel
-%{_defaultdocdir}/*
 /usr/share/license/%{name}
