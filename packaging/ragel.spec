@@ -41,5 +41,6 @@ cp %{_builddir}/%{buildsubdir}/COPYING %{buildroot}/usr/share/license/%{name}
 %remove_docs
 
 %files
+%manifest ragel.manifest
 %{_bindir}/ragel
 /usr/share/license/%{name}
