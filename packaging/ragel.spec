@@ -1,11 +1,10 @@
 Name:       ragel
-Summary:    Ragel
+Summary:    Ragel State Machine Compiler
 Version:    6.6
 Release:    1
-Group:      TO_BE/FILLED_IN
-License:    TO BE FILLED IN
+Group:      System/Utilities
+License:    GPL-2.0
 Source0:    %{name}-%{version}.tar.gz
-Patch0:     no-doc.patch
 
 %description
 compiles finite state machines into code in various languages
@@ -22,12 +21,10 @@ The generated code has no dependencies.
 
 %prep
 %setup -q 
-%patch0 -p1
-
 
 %build
-./autogen.sh
-./configure --prefix=%{_prefix}
+%autogen.sh
+%configure --prefix=%{_prefix}
 
 make %{?jobs:-j%jobs}
 
@@ -35,12 +32,10 @@ make %{?jobs:-j%jobs}
 %install
 rm -rf %{buildroot}
 %make_install
-mkdir -p %{buildroot}/usr/share/license
-cp %{_builddir}/%{buildsubdir}/COPYING %{buildroot}/usr/share/license/%{name}
 
 %remove_docs
 
 %files
+%license COPYING
 %manifest ragel.manifest
 %{_bindir}/ragel
-/usr/share/license/%{name}
