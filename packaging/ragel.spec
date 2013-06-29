@@ -5,6 +5,7 @@ Release:    1
 Group:      System/Utilities
 License:    GPL-2.0
 Source0:    %{name}-%{version}.tar.gz
+Source1001: 	ragel.manifest
 
 %description
 compiles finite state machines into code in various languages
@@ -21,6 +22,7 @@ The generated code has no dependencies.
 
 %prep
 %setup -q 
+cp %{SOURCE1001} .
 
 %build
 %autogen.sh
@@ -36,6 +38,7 @@ rm -rf %{buildroot}
 %remove_docs
 
 %files
+%manifest %{name}.manifest
 %license COPYING
 %manifest ragel.manifest
 %{_bindir}/ragel
