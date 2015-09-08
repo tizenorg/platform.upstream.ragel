@@ -25,6 +25,13 @@ missed.
 
 * C# code generation contributed by Daniel Tang.
 
+* Go code generation contributed by Justine Tunney. Significantly expanded by
+  Anton Ageev
+
+* D2 patch from Johannes Pfau.
+
+* OCaml patch from ygrek.
+
 * Feedback, Packaging, and Fixes provided by:
 
     Bob Tennent, Robert Lemmen, Tobias Jahn, Cris Bailiff, Buddy Betts,
@@ -38,4 +45,5 @@ missed.
     Kenny MacDermid, MenTaLguY, Manoj Rajagopalan, Tim Chklovski,
     Mikkel Fahnøe Jørgensen, Andrei Polushin, Evan Phoenix, David Balmain,
     Ross Thomas, Mitchell Foral, John D. Mitchell, Diego 'Flameeyes' Pettenò,
-    Jose Quinteiro, William Morgan, _why, Iñaki Baz Castillo
+    Jose Quinteiro, William Morgan, _why, Iñaki Baz Castillo, Attila Sztupák,
+    Ismael Luceno, Josh Stern, Denis Naumov, Anton Ageev, Kamil Klimkiewicz

@@ -45,8 +45,10 @@ typedef AvlMapEl<char *, CodeGenData*> CodeGenMapEl;
 
 void cdLineDirective( ostream &out, const char *fileName, int line );
 void javaLineDirective( ostream &out, const char *fileName, int line );
+void goLineDirective( ostream &out, const char *fileName, int line );
 void rubyLineDirective( ostream &out, const char *fileName, int line );
 void csharpLineDirective( ostream &out, const char *fileName, int line );
+void ocamlLineDirective( ostream &out, const char *fileName, int line );
 void genLineDirective( ostream &out );
 void lineDirective( ostream &out, const char *fileName, int line );
 

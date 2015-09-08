@@ -114,6 +114,8 @@ struct HostType
 	const char *data2;
 	const char *internalName;
 	bool isSigned;
+	bool isOrd;
+	bool isChar;
 	long long minVal;
 	long long maxVal;
 	unsigned int size;
@@ -124,7 +126,7 @@ struct HostLang
 	/* Target language. */
 	enum Lang
 	{
-		C, D, Java, Ruby, CSharp
+		C, D, D2, Go, Java, Ruby, CSharp, OCaml
 	};
 
 	Lang lang;
@@ -138,9 +140,12 @@ extern HostLang *hostLang;
 
 extern HostLang hostLangC;
 extern HostLang hostLangD;
+extern HostLang hostLangD2;
+extern HostLang hostLangGo;
 extern HostLang hostLangJava;
 extern HostLang hostLangRuby;
 extern HostLang hostLangCSharp;
+extern HostLang hostLangOCaml;
 
 HostType *findAlphType( const char *s1 );
 HostType *findAlphType( const char *s1, const char *s2 );

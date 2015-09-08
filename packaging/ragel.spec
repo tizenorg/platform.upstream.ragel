@@ -1,6 +1,6 @@
 Name:       ragel
 Summary:    Ragel State Machine Compiler
-Version:    6.6
+Version:    6.8
 Release:    1
 Group:      System/Utilities
 License:    GPL-2.0

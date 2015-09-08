@@ -508,7 +508,7 @@ template <BST_TEMPL_DEF> Element *BstTable<BST_TEMPL_USE>::
 		}
 
 		mid = lower + ((upper-lower)>>1);
-		keyRelation = this->compare(key, GET_KEY(*mid));
+		keyRelation = compare(key, GET_KEY(*mid));
 
 		if ( keyRelation < 0 )
 			upper = mid - 1;
@@ -603,7 +603,7 @@ template <BST_TEMPL_DEF> Element *BstTable<BST_TEMPL_USE>::
 		}
 
 		mid = lower + ((upper-lower)>>1);
-		keyRelation = this->compare(GET_KEY(el), GET_KEY(*mid));
+		keyRelation = compare(GET_KEY(el), GET_KEY(*mid));
 
 		if ( keyRelation < 0 )
 			upper = mid - 1;
