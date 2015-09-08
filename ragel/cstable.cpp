@@ -372,7 +372,11 @@ std::ostream &CSharpTabCodeGen::COND_KEYS()
 
 	/* Output one last number so we don't have to figure out when the last
 	 * entry is and avoid writing a comma. */
-	out << 0 << "\n";
+	if ( keyOps->alphType->isChar )
+		out << "(char) " << 0 << "\n";
+	else
+		out << 0 << "\n";
+
 	return out;
 }
 
@@ -424,7 +428,11 @@ std::ostream &CSharpTabCodeGen::KEYS()
 
 	/* Output one last number so we don't have to figure out when the last
 	 * entry is and avoid writing a comma. */
-	out << "(char) " << 0 << "\n";
+	if ( keyOps->alphType->isChar )
+		out << "(char) " << 0 << "\n";
+	else
+		out << 0 << "\n";
+
 	return out;
 }
 
@@ -949,8 +957,8 @@ void CSharpTabCodeGen::writeExec()
 			|| redFsm->anyFromStateActions() )
 	{
 		out << 
-			"	" << actsType << " _acts;\n"
-			"	" << nactsType << " _nacts;\n";
+			"	int _acts;\n"
+			"	int _nacts;\n";
 	}
 
 	out <<
@@ -1077,9 +1085,9 @@ void CSharpTabCodeGen::writeExec()
 
 		if ( redFsm->anyEofActions() ) {
 			out <<
-				"	" << actsType << " __acts = " << 
+				"	int __acts = " << 
 						EA() << "[" << vCS() << "]" << ";\n"
-				"	" << nactsType << " __nacts = " << 
+				"	int __nacts = " << 
 				A() << "[__acts++];\n"
 				"	while ( __nacts-- > 0 ) {\n"
 				"		switch ( " << A() << "[__acts++] ) {\n";
@@ -1112,6 +1120,4 @@ void CSharpTabCodeGen::initVarTypes()
 	klenType = ARRAY_TYPE(klenMax);
 	keysType = ARRAY_TYPE(keysMax);
 	signedKeysType = ARRAY_TYPE(keysMax, true);
-	actsType = ARRAY_TYPE(redFsm->maxActionLoc);
-	nactsType = ARRAY_TYPE(redFsm->maxActArrItem);
 }

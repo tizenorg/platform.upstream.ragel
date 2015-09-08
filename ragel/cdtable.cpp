@@ -619,9 +619,9 @@ void TabCodeGen::LOCATE_TRANS()
 		"\n"
 		"	_klen = " << SL() << "[" << vCS() << "];\n"
 		"	if ( _klen > 0 ) {\n"
-		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << POINTER() << "_lower = _keys;\n"
-		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << POINTER() << "_mid;\n"
-		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << POINTER() << "_upper = _keys + _klen - 1;\n"
+		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << PTR_CONST_END() << POINTER() << "_lower = _keys;\n"
+		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << PTR_CONST_END() << POINTER() << "_mid;\n"
+		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << PTR_CONST_END() << POINTER() << "_upper = _keys + _klen - 1;\n"
 		"		while (1) {\n"
 		"			if ( _upper < _lower )\n"
 		"				break;\n"
@@ -632,7 +632,7 @@ void TabCodeGen::LOCATE_TRANS()
 		"			else if ( " << GET_WIDE_KEY() << " > *_mid )\n"
 		"				_lower = _mid + 1;\n"
 		"			else {\n"
-		"				_trans += (_mid - _keys);\n"
+		"				_trans += " << CAST(UINT()) << "(_mid - _keys);\n"
 		"				goto _match;\n"
 		"			}\n"
 		"		}\n"
@@ -642,9 +642,9 @@ void TabCodeGen::LOCATE_TRANS()
 		"\n"
 		"	_klen = " << RL() << "[" << vCS() << "];\n"
 		"	if ( _klen > 0 ) {\n"
-		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << POINTER() << "_lower = _keys;\n"
-		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << POINTER() << "_mid;\n"
-		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << POINTER() << "_upper = _keys + (_klen<<1) - 2;\n"
+		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << PTR_CONST_END() << POINTER() << "_lower = _keys;\n"
+		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << PTR_CONST_END() << POINTER() << "_mid;\n"
+		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << PTR_CONST_END() << POINTER() << "_upper = _keys + (_klen<<1) - 2;\n"
 		"		while (1) {\n"
 		"			if ( _upper < _lower )\n"
 		"				break;\n"
@@ -655,7 +655,7 @@ void TabCodeGen::LOCATE_TRANS()
 		"			else if ( " << GET_WIDE_KEY() << " > _mid[1] )\n"
 		"				_lower = _mid + 2;\n"
 		"			else {\n"
-		"				_trans += ((_mid - _keys)>>1);\n"
+		"				_trans += " << CAST(UINT()) << "((_mid - _keys)>>1);\n"
 		"				goto _match;\n"
 		"			}\n"
 		"		}\n"
@@ -876,9 +876,9 @@ void TabCodeGen::COND_TRANSLATE()
 		"	_klen = " << CL() << "[" << vCS() << "];\n"
 		"	_keys = " << ARR_OFF( CK(), "(" + CO() + "[" + vCS() + "]*2)" ) << ";\n"
 		"	if ( _klen > 0 ) {\n"
-		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << POINTER() << "_lower = _keys;\n"
-		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << POINTER() << "_mid;\n"
-		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << POINTER() << "_upper = _keys + (_klen<<1) - 2;\n"
+		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << PTR_CONST_END() << POINTER() << "_lower = _keys;\n"
+		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << PTR_CONST_END() << POINTER() << "_mid;\n"
+		"		" << PTR_CONST() << WIDE_ALPH_TYPE() << PTR_CONST_END() << POINTER() << "_upper = _keys + (_klen<<1) - 2;\n"
 		"		while (1) {\n"
 		"			if ( _upper < _lower )\n"
 		"				break;\n"
@@ -945,13 +945,13 @@ void TabCodeGen::writeExec()
 			|| redFsm->anyFromStateActions() )
 	{
 		out << 
-			"	" << PTR_CONST() << ARRAY_TYPE(redFsm->maxActArrItem) << 
+			"	" << PTR_CONST() << ARRAY_TYPE(redFsm->maxActArrItem) << PTR_CONST_END() << 
 					POINTER() << "_acts;\n"
 			"	" << UINT() << " _nacts;\n";
 	}
 
 	out <<
-		"	" << PTR_CONST() << WIDE_ALPH_TYPE() << POINTER() << "_keys;\n"
+		"	" << PTR_CONST() << WIDE_ALPH_TYPE() << PTR_CONST_END() << POINTER() << "_keys;\n"
 		"\n";
 
 	if ( !noEnd ) {
@@ -1072,7 +1072,7 @@ void TabCodeGen::writeExec()
 
 		if ( redFsm->anyEofActions() ) {
 			out <<
-				"	" << PTR_CONST() << ARRAY_TYPE(redFsm->maxActArrItem) << 
+				"	" << PTR_CONST() << ARRAY_TYPE(redFsm->maxActArrItem) << PTR_CONST_END() << 
 						POINTER() << "__acts = " << 
 						ARR_OFF( A(), EA() + "[" + vCS() + "]" ) << ";\n"
 				"	" << UINT() << " __nacts = " << CAST(UINT()) << " *__acts++;\n"

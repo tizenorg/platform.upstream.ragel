@@ -121,10 +121,12 @@ void usage()
 "host language:\n"
 "   -C                   The host language is C, C++, Obj-C or Obj-C++ (default)\n"
 "   -D                   The host language is D\n"
+"   -Z                   The host language is Go\n"
 "   -J                   The host language is Java\n"
 "   -R                   The host language is Ruby\n"
 "   -A                   The host language is C#\n"
-"line direcives: (C/D/C#)\n"
+"   -O                   The host language is OCaml\n"
+"line directives: (C/D/Ruby/C#)\n"
 "   -L                   Inhibit writing of #line directives\n"
 "code style: (C/D/Java/Ruby/C#)\n"
 "   -T0                  Table driven FSM (default)\n"
@@ -217,7 +219,7 @@ void escapeLineDirectivePath( std::ostream &out, char *path )
 
 void processArgs( int argc, const char **argv, InputData &id )
 {
-	ParamCheck pc("xo:dnmleabjkS:M:I:CDJRAvHh?-:sT:F:G:P:LpV", argc, argv);
+	ParamCheck pc("xo:dnmleabjkS:M:I:CDEJZRAOvHh?-:sT:F:G:P:LpV", argc, argv);
 
 	/* FIXME: Need to check code styles VS langauge. */
 
@@ -315,6 +317,12 @@ void processArgs( int argc, const char **argv, InputData &id )
 			case 'D':
 				hostLang = &hostLangD;
 				break;
+			case 'E':
+				hostLang = &hostLangD2;
+				break;
+			case 'Z':
+				hostLang = &hostLangGo;
+				break;
 			case 'J':
 				hostLang = &hostLangJava;
 				break;
@@ -323,6 +331,9 @@ void processArgs( int argc, const char **argv, InputData &id )
 				break;
 			case 'A':
 				hostLang = &hostLangCSharp;
+				break;
+			case 'O':
+				hostLang = &hostLangOCaml;
 				break;
 
 			/* Version and help. */

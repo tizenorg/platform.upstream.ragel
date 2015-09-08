@@ -46,11 +46,21 @@ void InputData::cdDefaultFileName( const char *inputFile )
 			switch ( hostLang->lang ) {
 				case HostLang::C: defExtension = ".c"; break;
 				case HostLang::D: defExtension = ".d"; break;
+				case HostLang::D2: defExtension = ".d"; break;
 				default: break;
 			}
 			outputFileName = fileNameFromStem( inputFile, defExtension );
 		}
 	}
+}
+
+/* Invoked by the parser when the root element is opened. */
+void InputData::goDefaultFileName( const char *inputFile )
+{
+	/* If the output format is code and no output file name is given, then
+	 * make a default. */
+	if ( outputFileName == 0 )
+		outputFileName = fileNameFromStem( inputFile, ".go" );
 }
 
 /* Invoked by the parser when the root element is opened. */
@@ -85,22 +95,38 @@ void InputData::csharpDefaultFileName( const char *inputFile )
 	}
 }
 
+/* Invoked by the parser when the root element is opened. */
+void InputData::ocamlDefaultFileName( const char *inputFile )
+{
+	/* If the output format is code and no output file name is given, then
+	 * make a default. */
+	if ( outputFileName == 0 )
+		outputFileName = fileNameFromStem( inputFile, ".ml" );
+}
+
 void InputData::makeOutputStream()
 {
 	if ( ! generateDot && ! generateXML ) {
 		switch ( hostLang->lang ) {
 			case HostLang::C:
 			case HostLang::D:
+			case HostLang::D2:
 				cdDefaultFileName( inputFileName );
 				break;
 			case HostLang::Java:
 				javaDefaultFileName( inputFileName );
+				break;
+			case HostLang::Go:
+				goDefaultFileName( inputFileName );
 				break;
 			case HostLang::Ruby:
 				rubyDefaultFileName( inputFileName );
 				break;
 			case HostLang::CSharp:
 				csharpDefaultFileName( inputFileName );
+				break;
+			case HostLang::OCaml:
+				ocamlDefaultFileName( inputFileName );
 				break;
 		}
 	}

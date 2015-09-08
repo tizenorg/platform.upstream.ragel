@@ -1,6 +1,12 @@
+%define run_tests 0
+%if %{run_tests}
+    # check is defined off at .rpmmacros file.
+    %undefine check
+%endif
+
 Name:       ragel
 Summary:    Ragel State Machine Compiler
-Version:    6.6
+Version:    6.8
 Release:    1
 Group:      System/Utilities
 License:    GPL-2.0
@@ -30,6 +36,13 @@ cp %{SOURCE1001} .
 
 make %{?jobs:-j%jobs}
 
+%check
+%if %{run_tests}
+    pushd test
+    %__make check || exit 0
+    popd
+    ./run_test.sh %{name} %{version}
+%endif
 
 %install
 rm -rf %{buildroot}
